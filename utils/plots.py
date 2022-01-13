@@ -21,6 +21,9 @@ from utils.general import (LOGGER, Timeout, check_requirements, clip_coords, inc
                            try_except, user_config_dir, xywh2xyxy, xyxy2xywh)
 from utils.metrics import fitness
 
+plt.rcParams['font.sans-serif'] = ['SimHei']
+plt.rcParams['axes.unicode_minus'] = False
+
 # Settings
 CONFIG_DIR = user_config_dir()  # Ultralytics settings dir
 RANK = int(os.getenv('RANK', -1))
@@ -70,7 +73,7 @@ class Annotator:
         check_font()  # download TTF if necessary
 
     # YOLOv5 Annotator for train/val mosaics and jpgs and detect/hub inference annotations
-    def __init__(self, im, line_width=None, font_size=None, font='Arial.ttf', pil=False, example='abc'):
+    def __init__(self, im, line_width=None, font_size=None, font='Arial.ttf', pil=False, example='中文'):
         assert im.data.contiguous, 'Image not contiguous. Apply np.ascontiguousarray(im) to Annotator() input images.'
         self.pil = pil or not is_ascii(example) or is_chinese(example)
         if self.pil:  # use PIL
@@ -132,7 +135,7 @@ def feature_visualization(x, module_type, stage, n=32, save_dir=Path('runs/detec
     if 'Detect' not in module_type:
         batch, channels, height, width = x.shape  # batch, channels, height, width
         if height > 1 and width > 1:
-            f = save_dir / f"stage{stage}_{module_type.split('.')[-1]}_features.png"  # filename
+            f = save_dir / f"stage{stage}_{module_type.split('.')[-1]}_features.svg"  # filename
 
             blocks = torch.chunk(x[0].cpu(), channels, dim=0)  # select batch index 0, block by channels
             n = min(n, channels)  # number of plots
@@ -144,7 +147,7 @@ def feature_visualization(x, module_type, stage, n=32, save_dir=Path('runs/detec
                 ax[i].axis('off')
 
             print(f'Saving {f}... ({n}/{channels})')
-            plt.savefig(f, dpi=300, bbox_inches='tight')
+            plt.savefig(f, bbox_inches='tight')
             plt.close()
             np.save(str(f.with_suffix('.npy')), x[0].cpu().numpy())  # npy save
 
@@ -254,7 +257,7 @@ def plot_lr_scheduler(optimizer, scheduler, epochs=300, save_dir=''):
     plt.grid()
     plt.xlim(0, epochs)
     plt.ylim(0)
-    plt.savefig(Path(save_dir) / 'LR.png', dpi=200)
+    plt.savefig(Path(save_dir) / 'LR.svg')
     plt.close()
 
 
@@ -267,12 +270,12 @@ def plot_val_txt():  # from utils.plots import *; plot_val()
     fig, ax = plt.subplots(1, 1, figsize=(6, 6), tight_layout=True)
     ax.hist2d(cx, cy, bins=600, cmax=10, cmin=0)
     ax.set_aspect('equal')
-    plt.savefig('hist2d.png', dpi=300)
+    plt.savefig('hist2d.svg')
 
     fig, ax = plt.subplots(1, 2, figsize=(12, 6), tight_layout=True)
     ax[0].hist(cx, bins=600)
     ax[1].hist(cy, bins=600)
-    plt.savefig('hist1d.png', dpi=200)
+    plt.savefig('hist1d.svg')
 
 
 def plot_targets_txt():  # from utils.plots import *; plot_targets_txt()
@@ -285,7 +288,7 @@ def plot_targets_txt():  # from utils.plots import *; plot_targets_txt()
         ax[i].hist(x[i], bins=100, label=f'{x[i].mean():.3g} +/- {x[i].std():.3g}')
         ax[i].legend()
         ax[i].set_title(s[i])
-    plt.savefig('targets.jpg', dpi=200)
+    plt.savefig('targets.svg')
 
 
 def plot_val_study(file='', dir='', x=None):  # from utils.plots import *; plot_val_study()
@@ -320,9 +323,9 @@ def plot_val_study(file='', dir='', x=None):  # from utils.plots import *; plot_
     ax2.set_xlabel('GPU Speed (ms/img)')
     ax2.set_ylabel('COCO AP val')
     ax2.legend(loc='lower right')
-    f = save_dir / 'study.png'
+    f = save_dir / 'study.svg'
     print(f'Saving {f}...')
-    plt.savefig(f, dpi=300)
+    plt.savefig(f)
 
 
 @try_except  # known issue https://github.com/ultralytics/yolov5/issues/5395
@@ -336,7 +339,7 @@ def plot_labels(labels, names=(), save_dir=Path('')):
 
     # seaborn correlogram
     sn.pairplot(x, corner=True, diag_kind='auto', kind='hist', diag_kws=dict(bins=50), plot_kws=dict(pmax=0.9))
-    plt.savefig(save_dir / 'labels_correlogram.jpg', dpi=200)
+    plt.savefig(save_dir / 'labels_correlogram.svg')
     plt.close()
 
     # matplotlib labels
@@ -366,7 +369,7 @@ def plot_labels(labels, names=(), save_dir=Path('')):
         for s in ['top', 'right', 'left', 'bottom']:
             ax[a].spines[s].set_visible(False)
 
-    plt.savefig(save_dir / 'labels.jpg', dpi=200)
+    plt.savefig(save_dir / 'labels.svg')
     matplotlib.use('Agg')
     plt.close()
 
@@ -391,8 +394,8 @@ def plot_evolve(evolve_csv='path/to/evolve.csv'):  # from utils.plots import *; 
         if i % 5 != 0:
             plt.yticks([])
         print(f'{k:>15}: {mu:.3g}')
-    f = evolve_csv.with_suffix('.png')  # filename
-    plt.savefig(f, dpi=200)
+    f = evolve_csv.with_suffix('.svg')  # filename
+    plt.savefig(f)
     plt.close()
     print(f'Saved {f}')
 
@@ -419,7 +422,7 @@ def plot_results(file='path/to/results.csv', dir=''):
         except Exception as e:
             print(f'Warning: Plotting error for {f}: {e}')
     ax[1].legend()
-    fig.savefig(save_dir / 'results.png', dpi=200)
+    fig.savefig(save_dir / 'results.svg')
     plt.close()
 
 
@@ -451,7 +454,7 @@ def profile_idetection(start=0, stop=0, labels=(), save_dir=''):
         except Exception as e:
             print(f'Warning: Plotting error for {f}; {e}')
     ax[1].legend()
-    plt.savefig(Path(save_dir) / 'idetection_profile.png', dpi=200)
+    plt.savefig(Path(save_dir) / 'idetection_profile.svg')
 
 
 def save_one_box(xyxy, im, file='image.jpg', gain=1.02, pad=10, square=False, BGR=False, save=True):

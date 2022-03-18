@@ -8,6 +8,7 @@ import random
 #
 # WARNING! All changes made in this file will be lost!
 import sys
+from pathlib import Path
 
 import cv2
 import numpy as np
@@ -15,11 +16,14 @@ import torch
 import torch.backends.cudnn as cudnn
 from PyQt5 import QtCore, QtGui, QtWidgets
 
-from models.experimental import attempt_load
+from models.common import DetectMultiBackend
 from utils.datasets import letterbox
-from utils.general import check_img_size, non_max_suppression, scale_coords
-from utils.plots import plot_one_box
+from utils.general import LOGGER, check_img_size, non_max_suppression, scale_coords
+from utils.plots import save_one_box
 from utils.torch_utils import select_device
+
+FILE = Path(__file__).resolve()
+ROOT = FILE.parents[0]  # YOLOv5 root directory
 
 
 class Ui_MainWindow(QtWidgets.QMainWindow):
@@ -34,67 +38,61 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
         # self.out = cv2.VideoWriter('prediction.avi', cv2.VideoWriter_fourcc(*'XVID'), 20.0, (640, 480))
 
         parser = argparse.ArgumentParser()
-        parser.add_argument('--weights', nargs='+', type=str,
-                            default='weights/yolov5s.pt', help='model.pt path(s)')
+        parser.add_argument('--weights', nargs='+', type=str, default='weights/yolov5s.pt', help='model.pt path(s)')
         # file/folder, 0 for webcam
-        parser.add_argument('--source', type=str,
-                            default='data/images', help='source')
-        parser.add_argument('--img-size', type=int,
-                            default=640, help='inference size (pixels)')
-        parser.add_argument('--conf-thres', type=float,
-                            default=0.25, help='object confidence threshold')
-        parser.add_argument('--iou-thres', type=float,
-                            default=0.45, help='IOU threshold for NMS')
-        parser.add_argument('--device', default='',
-                            help='cuda device, i.e. 0 or 0,1,2,3 or cpu')
-        parser.add_argument(
-                '--view-img', action='store_true', help='display results')
-        parser.add_argument('--save-txt', action='store_true',
-                            help='save results to *.txt')
-        parser.add_argument('--save-conf', action='store_true',
-                            help='save confidences in --save-txt labels')
-        parser.add_argument('--nosave', action='store_true',
-                            help='do not save images/videos')
-        parser.add_argument('--classes', nargs='+', type=int,
-                            help='filter by class: --class 0, or --class 0 2 3')
-        parser.add_argument(
-                '--agnostic-nms', action='store_true', help='class-agnostic NMS')
-        parser.add_argument('--augment', action='store_true',
-                            help='augmented inference')
-        parser.add_argument('--update', action='store_true',
-                            help='update all models')
-        parser.add_argument('--project', default='runs/detect',
-                            help='save results to project/name')
-        parser.add_argument('--name', default='exp',
-                            help='save results to project/name')
-        parser.add_argument('--exist-ok', action='store_true',
-                            help='existing project/name ok, do not increment')
+        parser.add_argument('--source', type=str, default='data/images', help='source')
+        parser.add_argument('--data', type=str, default=ROOT / 'data/me.yaml', help='(optional) dataset.yaml path')
+        parser.add_argument('--img-size', type=int, default=640, help='inference size (pixels)')
+        parser.add_argument('--conf-thres', type=float, default=0.25, help='object confidence threshold')
+        parser.add_argument('--iou-thres', type=float, default=0.45, help='IOU threshold for NMS')
+        parser.add_argument('--device', default='0', help='cuda device, i.e. 0 or 0,1,2,3 or cpu')
+        parser.add_argument('--view-img', action='store_true', help='display results')
+        parser.add_argument('--save-txt', action='store_true', help='save results to *.txt')
+        parser.add_argument('--save-conf', action='store_true', help='save confidences in --save-txt labels')
+        parser.add_argument('--nosave', action='store_true', help='do not save images/videos')
+        parser.add_argument('--classes', nargs='+', type=int, help='filter by class: --class 0, or --class 0 2 3')
+        parser.add_argument('--agnostic-nms', action='store_true', help='class-agnostic NMS')
+        parser.add_argument('--augment', action='store_true', help='augmented inference')
+        parser.add_argument('--update', action='store_true', help='update all models')
+        parser.add_argument('--project', default='runs/detect', help='save results to project/name')
+        parser.add_argument('--name', default='exp', help='save results to project/name')
+        parser.add_argument('--exist-ok', action='store_true', help='existing project/name ok, do not increment')
+        parser.add_argument('--dnn', action='store_true', help='use OpenCV DNN for ONNX inference')
         self.opt = parser.parse_args()
         print(self.opt)
-
-        source, weights, view_img, save_txt, imgsz = self.opt.source, self.opt.weights, self.opt.view_img, self.opt.save_txt, self.opt.img_size
+        source = self.opt.source
+        weights = self.opt.weights
+        view_img = self.opt.view_img
+        save_txt = self.opt.save_txt
+        imgsz = self.opt.img_size
+        dnn = self.opt.dnn
+        data = self.opt.data
 
         self.device = select_device(self.opt.device)
-        self.half = self.device.type != 'cpu'  # half precision only supported on CUDA
-
         cudnn.benchmark = True
 
-        # Load model
-        self.model = attempt_load(
-                weights, map_location=self.device)  # load FP32 model
-        stride = int(self.model.stride.max())  # model stride
+        # 加载模型
+        # TODO: 加入手动选择模型后应将此处的加载模型改为手动选择的路径
+        self.model = DetectMultiBackend(weights, device=self.device, dnn=dnn, data=data)
+        stride, names, pt, jit, onnx, engine = self.model.stride, self.model.names, self.model.pt, self.model.jit, self.model.onnx, self.model.engine
         self.imgsz = check_img_size(imgsz, s=stride)  # check img_size
-        if self.half:
-            self.model.half()  # to FP16
+        # 仅在 CUDA 上支持半精度
+        self.half &= (pt or jit or onnx or engine) and self.device.type != 'cpu'
+        if pt or jit:
+            self.model.model.half() if self.half else self.model.model.float()
+        elif engine and self.model.trt_fp16_input != self.half:
+            LOGGER.info('模型 ' + (
+                '需要' if self.model.trt_fp16_input else '不兼容') + ' --half. 自动调整.')
+            self.half = self.model.trt_fp16_input
 
-        # Get names and colors
+        # 获取名称和颜色
         self.names = self.model.module.names if hasattr(
                 self.model, 'module') else self.model.names
-        self.colors = [[random.randint(0, 255)
+        self.colors = [[random.randint(125, 255)
                         for _ in range(3)] for _ in self.names]
 
     def setupUi(self, MainWindow):
-        MainWindow.setObjectName("MainWindow")
+        MainWindow.setObjectName("识别系统")
         MainWindow.resize(800, 600)
         self.centralwidget = QtWidgets.QWidget(MainWindow)
         self.centralwidget.setObjectName("centralwidget")
@@ -237,8 +235,7 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
                     for *xyxy, conf, cls in reversed(det):
                         label = '%s %.2f' % (self.names[int(cls)], conf)
                         name_list.append(self.names[int(cls)])
-                        plot_one_box(xyxy, showimg, label=label,
-                                     color=self.colors[int(cls)], line_thickness=2)
+                        save_one_box(xyxy, showimg)
 
         cv2.imwrite('prediction.jpg', showimg)
         self.result = cv2.cvtColor(showimg, cv2.COLOR_BGR2BGRA)
@@ -327,8 +324,8 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
                             label = '%s %.2f' % (self.names[int(cls)], conf)
                             name_list.append(self.names[int(cls)])
                             print(label)
-                            plot_one_box(
-                                    xyxy, showimg, label=label, color=self.colors[int(cls)], line_thickness=2)
+                            save_one_box(
+                                    xyxy, showimg)
 
             self.out.write(showimg)
             show = cv2.resize(showimg, (640, 480))

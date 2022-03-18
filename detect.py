@@ -48,32 +48,32 @@ from utils.torch_utils import select_device, time_sync
 
 
 @torch.no_grad()
-def run(weights=ROOT / 'yolov5s.pt',  # model.pt path(s)
-        source=ROOT / 'data/images',  # file/dir/URL/glob, 0 for webcam
-        data=ROOT / 'data/coco128.yaml',  # dataset.yaml path
-        imgsz=(640, 640),  # inference size (height, width)
-        conf_thres=0.25,  # confidence threshold
-        iou_thres=0.45,  # NMS IOU threshold
-        max_det=1000,  # maximum detections per image
-        device='',  # cuda device, i.e. 0 or 0,1,2,3 or cpu
-        view_img=False,  # show results
-        save_txt=False,  # save results to *.txt
-        save_conf=False,  # save confidences in --save-txt labels
-        save_crop=False,  # save cropped prediction boxes
-        nosave=False,  # do not save images/videos
-        classes=None,  # filter by class: --class 0, or --class 0 2 3
-        agnostic_nms=False,  # class-agnostic NMS
-        augment=False,  # augmented inference
-        visualize=False,  # visualize features
-        update=False,  # update all models
-        project=ROOT / 'runs/detect',  # save results to project/name
-        name='exp',  # save results to project/name
-        exist_ok=False,  # existing project/name ok, do not increment
-        line_thickness=3,  # bounding box thickness (pixels)
-        hide_labels=False,  # hide labels
-        hide_conf=False,  # hide confidences
-        half=False,  # use FP16 half-precision inference
-        dnn=False,  # use OpenCV DNN for ONNX inference
+def run(weights=ROOT / 'yolov5s.pt',  # 权重模型
+        source=ROOT / 'data/images',  # 文件/目录/URL/通配符批量选择文件, 0 -- 摄像头
+        data=ROOT / 'data/coco128.yaml',  # 数据集.yaml路径
+        imgsz=(640, 640),  # 图片大小(height, width)
+        conf_thres=0.25,  # 置信阈值
+        iou_thres=0.45,  # nms的IOU阈值
+        max_det=1000,  # 每张图像的最大检测次数
+        device='',  # cuda 设备, 即 0 or 0,1,2,3 or cpu
+        view_img=False,  # 展示结果
+        save_txt=False,  # 保存结果到 *.txt
+        save_conf=False,  # 保存置信度 --save-txt labels
+        save_crop=False,  # 保存裁剪的预测框
+        nosave=False,  # 不保存图片/视频
+        classes=None,  # 按类别过滤
+        agnostic_nms=False,  # 与类别无关的NMS
+        augment=False,  # 增强推理
+        visualize=False,  # 可视化特征
+        update=False,  # 更新所有模型
+        project=ROOT / 'runs/detect',  # 运行的目录
+        name='exp',  # 保存结果到 project/name
+        exist_ok=False,  # 是否使用现有的 project/name 若为True，则使用最近的一次结果文件夹
+        line_thickness=3,  # 边框厚度(px)
+        hide_labels=False,  # 是否隐藏标签
+        hide_conf=False,  # 隐藏置信度
+        half=False,  # 使用 FP16 半精度推理
+        dnn=False,  # 使用 OpenCV DNN 进行 ONNX 推理
         ):
     source = str(source)
     save_img = not nosave and not source.endswith('.txt')  # save inference images
@@ -105,7 +105,7 @@ def run(weights=ROOT / 'yolov5s.pt',  # model.pt path(s)
     # Dataloader
     if webcam:
         view_img = check_imshow()
-        cudnn.benchmark = True  # set True to speed up constant image size inference
+        cudnn.benchmark = True  # 设置 True 以加速恒定图像尺寸推断
         dataset = LoadStreams(source, img_size=imgsz, stride=stride, auto=pt)
         bs = len(dataset)  # batch_size
     else:

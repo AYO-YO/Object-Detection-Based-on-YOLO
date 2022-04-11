@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-import argparse
+import os
 import random
 # Form implementation generated from reading ui file '.\project.ui'
 #
@@ -17,13 +17,16 @@ import torch.backends.cudnn as cudnn
 from PyQt5 import QtCore, QtGui, QtWidgets
 
 from models.common import DetectMultiBackend
-from utils.datasets import letterbox
-from utils.general import LOGGER, check_img_size, non_max_suppression, scale_coords
-from utils.plots import save_one_box
-from utils.torch_utils import select_device
+from utils.datasets import letterbox, LoadImages
+from utils.general import LOGGER, check_img_size, non_max_suppression, scale_coords, increment_path, xyxy2xywh
+from utils.plots import save_one_box, Annotator, colors
+from utils.torch_utils import select_device, time_sync
 
 FILE = Path(__file__).resolve()
-ROOT = FILE.parents[0]  # YOLOv5 root directory
+ROOT = FILE.parents[0]
+if str(ROOT) not in sys.path:
+    sys.path.append(str(ROOT))  # add ROOT to PATH
+ROOT = Path(os.path.relpath(ROOT, Path.cwd()))  # relative
 
 
 class Ui_MainWindow(QtWidgets.QMainWindow):
@@ -34,53 +37,51 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
         self.init_logo()
         self.init_slots()
         self.cap = cv2.VideoCapture()
+        self.weights = ROOT / 'yolov5s.pt'  # 权重模型
+        self.source = ROOT / 'data/images'  # 文件/目录/URL/通配符批量选择文件, 0 -- 摄像头
+        self.data = ROOT / 'data/coco128.yaml'  # 数据集.yaml路径
+        self.imgsz = (640, 640)  # 图片大小(height, width)
         self.out = None
-        # self.out = cv2.VideoWriter('prediction.avi', cv2.VideoWriter_fourcc(*'XVID'), 20.0, (640, 480))
-
-        parser = argparse.ArgumentParser()
-        parser.add_argument('--weights', nargs='+', type=str, default='weights/yolov5s.pt', help='model.pt path(s)')
-        # file/folder, 0 for webcam
-        parser.add_argument('--source', type=str, default='data/images', help='source')
-        parser.add_argument('--data', type=str, default=ROOT / 'data/me.yaml', help='(optional) dataset.yaml path')
-        parser.add_argument('--img-size', type=int, default=640, help='inference size (pixels)')
-        parser.add_argument('--conf-thres', type=float, default=0.25, help='object confidence threshold')
-        parser.add_argument('--iou-thres', type=float, default=0.45, help='IOU threshold for NMS')
-        parser.add_argument('--device', default='0', help='cuda device, i.e. 0 or 0,1,2,3 or cpu')
-        parser.add_argument('--view-img', action='store_true', help='display results')
-        parser.add_argument('--save-txt', action='store_true', help='save results to *.txt')
-        parser.add_argument('--save-conf', action='store_true', help='save confidences in --save-txt labels')
-        parser.add_argument('--nosave', action='store_true', help='do not save images/videos')
-        parser.add_argument('--classes', nargs='+', type=int, help='filter by class: --class 0, or --class 0 2 3')
-        parser.add_argument('--agnostic-nms', action='store_true', help='class-agnostic NMS')
-        parser.add_argument('--augment', action='store_true', help='augmented inference')
-        parser.add_argument('--update', action='store_true', help='update all models')
-        parser.add_argument('--project', default='runs/detect', help='save results to project/name')
-        parser.add_argument('--name', default='exp', help='save results to project/name')
-        parser.add_argument('--exist-ok', action='store_true', help='existing project/name ok, do not increment')
-        parser.add_argument('--dnn', action='store_true', help='use OpenCV DNN for ONNX inference')
-        self.opt = parser.parse_args()
-        print(self.opt)
-        source = self.opt.source
-        weights = self.opt.weights
-        view_img = self.opt.view_img
-        save_txt = self.opt.save_txt
-        imgsz = self.opt.img_size
-        dnn = self.opt.dnn
-        data = self.opt.data
-
+        self.augment = True  # 增强推理
+        self.visualize = False  # 可视化特征
+        self.conf_thres = 0.25  # 置信阈值
+        self.iou_thres = 0.45  # nms的IOU阈值
+        self.max_det = 1000  # 每张图像的最大检测次数
+        self.device = '0'  # cuda 设备, 即 0 or 0,1,2,3 or cpu
+        self.view_img = False  # 展示结果
+        self.save_txt = False  # 保存结果到 *.txt
+        self.save_conf = False  # 保存置信度 --save-txt labels
+        self.save_crop = False  # 保存裁剪的预测框
+        self.nosave = False  # 不保存图片/视频
+        self.classes = None  # 按类别过滤
+        self.agnostic_nms = False  # 与类别无关的NMS
+        self.augment = False  # 增强推理
+        self.visualize = False  # 可视化特征
+        self.update = False  # 更新所有模型
+        self.name = 'exp'  # 保存结果到 project/name
+        self.exist_ok = False,  # 是否使用现有的 project/name 若为True，则使用最近的一次结果文件夹
+        self.line_thickness = 3,  # 边框厚度(px)
+        self.hide_labels = False,  # 是否隐藏标签
+        self.hide_conf = False,  # 隐藏置信度
+        self.half = False,  # 使用 FP16 半精度推理
+        self.dnn = False,  # 使用 OpenCV DNN 进行 ONNX 推理
+        self.project = ROOT / 'runs/detect'  # 运行的目录
+        self.save_dir = increment_path(Path(self.project) / self.name, exist_ok=self.exist_ok)  # increment run
+        (self.save_dir / 'labels' if self.save_txt else self.save_dir).mkdir(parents=True, exist_ok=True)  # make dir
+        self.save_img = not self.nosave and not self.source.endswith('.txt')  # save inference images
         self.device = select_device(self.opt.device)
         cudnn.benchmark = True
 
         # 加载模型
         # TODO: 加入手动选择模型后应将此处的加载模型改为手动选择的路径
-        self.model = DetectMultiBackend(weights, device=self.device, dnn=dnn, data=data)
-        stride, names, pt, jit, onnx, engine = self.model.stride, self.model.names, self.model.pt, self.model.jit, self.model.onnx, self.model.engine
-        self.imgsz = check_img_size(imgsz, s=stride)  # check img_size
+        self.model = DetectMultiBackend(self.weights, device=self.device, dnn=self.dnn, data=self.data)
+        self.stride, self.names, self.pt, self.jit, self.onnx, self.engine = self.model.stride, self.model.names, self.model.pt, self.model.jit, self.model.onnx, self.model.engine
+        self.imgsz = check_img_size(self.imgsz, s=self.stride)  # check img_size
         # 仅在 CUDA 上支持半精度
-        self.half &= (pt or jit or onnx or engine) and self.device.type != 'cpu'
-        if pt or jit:
+        self.half &= (self.pt or self.jit or self.onnx or self.engine) and self.device.type != 'cpu'
+        if self.pt or self.jit:
             self.model.model.half() if self.half else self.model.model.float()
-        elif engine and self.model.trt_fp16_input != self.half:
+        elif self.engine and self.model.trt_fp16_input != self.half:
             LOGGER.info('模型 ' + (
                 '需要' if self.model.trt_fp16_input else '不兼容') + ' --half. 自动调整.')
             self.half = self.model.trt_fp16_input
@@ -198,7 +199,6 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
 
     def button_image_open(self):
         print('button_image_open')
-        name_list = []
 
         img_name, _ = QtWidgets.QFileDialog.getOpenFileName(
             self, "打开图片", "", "*.jpg;;*.png;;All Files(*)")
@@ -207,39 +207,71 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
 
         print(f'已选择图片{img_name}...')
 
-        img = cv2.imread(img_name)
-        showimg = img
         with torch.no_grad():
-            img = letterbox(img, new_shape=self.opt.img_size)[0]
-            # 转换
-            # BGR to RGB, to 3x416x416
-            img = img[::-1].transpose(2, 0, 1)
-            img = np.ascontiguousarray(img)
-            img = torch.from_numpy(img).to(self.device)
-            img = img.half() if self.half else img.float()  # uint8 to fp16/32
-            img /= 255.0  # 0 - 255 to 0.0 - 1.0
-            if img.ndimension() == 3:
-                img = img.unsqueeze(0)
-            # Inference
-            pred = self.model(img, augment=self.opt.augment)[0]
-            # Apply NMS
-            pred = non_max_suppression(pred, self.opt.conf_thres, self.opt.iou_thres, classes=self.opt.classes,
-                                       agnostic=self.opt.agnostic_nms)
-            print(pred)
-            # Process detections
-            for i, det in enumerate(pred):
-                if det is not None and len(det):
-                    # Rescale boxes from img_size to im0 size
-                    det[:, :4] = scale_coords(
-                        img.shape[2:], det[:, :4], showimg.shape).round()
+            img = LoadImages(img_name, img_size=self.imgsz, stride=self.stride, auto=self.pt)
 
-                    for *xyxy, conf, cls in reversed(det):
-                        label = '%s %.2f' % (self.names[int(cls)], conf)
-                        name_list.append(self.names[int(cls)])
-                        save_one_box(xyxy, showimg)
+            # 开始推理
+            self.model.warmup(imgsz=(1, 3, *self.imgsz), half=self.half)
+            dt, seen = [0.0, 0.0, 0.0], 0
+            for path, im, im0s, vid_cap, s in img:
+                t1 = time_sync()
+                im = torch.from_numpy(im).to(self.device)
+                im = im.half() if self.half else im.float()  # uint8 to fp16/32
+                im /= 255  # 0 - 255 to 0.0 - 1.0
+                if len(im.shape) == 3:
+                    im = im[None]  # expand for batch dim
+                t2 = time_sync()
+                dt[0] += t2 - t1
 
-        cv2.imwrite('prediction.jpg', showimg)
-        self.result = cv2.cvtColor(showimg, cv2.COLOR_BGR2BGRA)
+                # 推理
+                self.visualize = increment_path(Path(path).stem, mkdir=True) if self.visualize else False
+                pred = self.model(im, augment=self.augment, visualize=self.visualize)
+                t3 = time_sync()
+                dt[1] += t3 - t2
+
+                # NMS
+                pred = non_max_suppression(pred, self.conf_thres, self.iou_thres, self.classes, self.agnostic_nms,
+                                           max_det=self.max_det)
+                dt[2] += time_sync() - t3
+                print(pred)
+
+                # 第二阶段分类器（可选）
+                # pred = utils.general.apply_classifier(pred, classifier_model, im, im0s)
+
+                # 处理预测
+                for i, det in enumerate(pred):
+                    seen += 1
+                    p, im0, frame = path, im0s.copy(), getattr(img, 'frame', 0)
+                    p = Path(p)
+                    save_path = str(p.name)  # im.jpg
+                    txt_path = str(f'labels/{p.stem}') + ('' if img.mode == 'image' else f'_{frame}')  # im.txt
+                    s += '%gx%g ' % im.shape[2:]  # print string
+                    gn = torch.tensor(im0.shape)[[1, 0, 1, 0]]  # normalization gain whwh
+                    imc = im0.copy() if self.save_crop else im0  # for save_crop
+                    annotator = Annotator(im0, line_width=self.line_thickness, example=str(self.names))
+                    if len(det):
+                        # Rescale boxes from img_size to im0 size
+                        det[:, :4] = scale_coords(im.shape[2:], det[:, :4], im0.shape).round()
+                        # Write results
+                        for *xyxy, conf, cls in reversed(det):
+                            if self.save_txt:  # Write to file
+                                xywh = (xyxy2xywh(torch.tensor(xyxy).view(1, 4)) / gn).view(
+                                    -1).tolist()  # normalized xywh
+                                line = (cls, *xywh, conf) if self.save_conf else (cls, *xywh)  # label format
+                                with open(txt_path + '.txt', 'a') as f:
+                                    f.write(('%g ' * len(line)).rstrip() % line + '\n')
+
+                            if self.save_img or self.save_crop or self.view_img:  # Add bbox to image
+                                c = int(cls)  # integer class
+                                label = None if self.hide_labels else (
+                                    self.names[c] if self.hide_conf else f'{self.names[c]} {conf:.2f}')
+                                annotator.box_label(xyxy, label, color=colors(c, True))
+                                if self.save_crop:
+                                    save_one_box(xyxy, imc,
+                                                 file=self.save_dir / 'crops' / self.names[c] / f'{p.stem}.jpg',
+                                                 BGR=True)
+        cv2.imwrite(save_path, im0)
+        self.result = cv2.cvtColor(im0, cv2.COLOR_BGR2BGRA)
         self.result = cv2.resize(
             self.result, (640, 480), interpolation=cv2.INTER_AREA)
         self.QtImg = QtGui.QImage(

@@ -111,10 +111,11 @@ def run(weights=ROOT / 'yolov5s.pt',  # 权重模型
     else:
         dataset = LoadImages(source, img_size=imgsz, stride=stride, auto=pt)
         bs = 1  # batch_size
+    # 视频检测
     vid_path, vid_writer = [None] * bs, [None] * bs
 
-    # Run inference
-    model.warmup(imgsz=(1 if pt else bs, 3, *imgsz), half=half)  # warmup
+    # 开始推理
+    model.warmup(imgsz=(1 if pt else bs, 3, *imgsz), half=half)  # 热身
     dt, seen = [0.0, 0.0, 0.0], 0
     for path, im, im0s, vid_cap, s in dataset:
         t1 = time_sync()

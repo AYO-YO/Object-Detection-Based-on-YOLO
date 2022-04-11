@@ -37,8 +37,8 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
         self.init_logo()
         self.init_slots()
         self.cap = cv2.VideoCapture()
-        self.weights = ROOT / 'yolov5s.pt'  # 权重模型
-        self.source = ROOT / 'data/images'  # 文件/目录/URL/通配符批量选择文件, 0 -- 摄像头
+        self.weights = ROOT / 'weights/yolov5s.pt'  # 权重模型
+        self.source = str(ROOT / 'data/images')  # 文件/目录/URL/通配符批量选择文件, 0 -- 摄像头
         self.data = ROOT / 'data/coco128.yaml'  # 数据集.yaml路径
         self.imgsz = (640, 640)  # 图片大小(height, width)
         self.out = None
@@ -59,17 +59,17 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
         self.visualize = False  # 可视化特征
         self.update = False  # 更新所有模型
         self.name = 'exp'  # 保存结果到 project/name
-        self.exist_ok = False,  # 是否使用现有的 project/name 若为True，则使用最近的一次结果文件夹
-        self.line_thickness = 3,  # 边框厚度(px)
-        self.hide_labels = False,  # 是否隐藏标签
-        self.hide_conf = False,  # 隐藏置信度
-        self.half = False,  # 使用 FP16 半精度推理
-        self.dnn = False,  # 使用 OpenCV DNN 进行 ONNX 推理
+        self.exist_ok = False  # 是否使用现有的 project/name 若为True，则使用最近的一次结果文件夹
+        self.line_thickness = 3  # 边框厚度(px)
+        self.hide_labels = False  # 是否隐藏标签
+        self.hide_conf = False  # 隐藏置信度
+        self.half = False  # 使用 FP16 半精度推理
+        self.dnn = False  # 使用 OpenCV DNN 进行 ONNX 推理
         self.project = ROOT / 'runs/detect'  # 运行的目录
+        self.device = select_device(self.device)
         self.save_dir = increment_path(Path(self.project) / self.name, exist_ok=self.exist_ok)  # increment run
         (self.save_dir / 'labels' if self.save_txt else self.save_dir).mkdir(parents=True, exist_ok=True)  # make dir
         self.save_img = not self.nosave and not self.source.endswith('.txt')  # save inference images
-        self.device = select_device(self.opt.device)
         cudnn.benchmark = True
 
         # 加载模型

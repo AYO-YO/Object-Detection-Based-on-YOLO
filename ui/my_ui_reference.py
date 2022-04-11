@@ -206,7 +206,7 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
             return
 
         print(f'已选择图片{img_name}...')
-        
+
         img = cv2.imread(img_name)
         showimg = img
         with torch.no_grad():

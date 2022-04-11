@@ -89,18 +89,20 @@ def replicate(im, labels):
 
 
 def letterbox(im, new_shape=(640, 640), color=(114, 114, 114), auto=True, scaleFill=False, scaleup=True, stride=32):
-    # Resize and pad image while meeting stride-multiple constraints
-    shape = im.shape[:2]  # current shape [height, width]
+    # 调整图像大小和填充图像，同时满足约束
+    shape = im.shape[:2]  # 当前 [height, width]
+
+    # 如果仅传入一个参数，则当作正方形处理
     if isinstance(new_shape, int):
         new_shape = (new_shape, new_shape)
 
-    # Scale ratio (new / old)
+    # 比例 (new / old)
     r = min(new_shape[0] / shape[0], new_shape[1] / shape[1])
     if not scaleup:  # only scale down, do not scale up (for better val mAP)
         r = min(r, 1.0)
 
-    # Compute padding
-    ratio = r, r  # width, height ratios
+    # 计算填充
+    ratio = r, r  # width, height 比例
     new_unpad = int(round(shape[1] * r)), int(round(shape[0] * r))
     dw, dh = new_shape[1] - new_unpad[0], new_shape[0] - new_unpad[1]  # wh padding
     if auto:  # minimum rectangle
@@ -110,7 +112,7 @@ def letterbox(im, new_shape=(640, 640), color=(114, 114, 114), auto=True, scaleF
         new_unpad = (new_shape[1], new_shape[0])
         ratio = new_shape[1] / shape[1], new_shape[0] / shape[0]  # width, height ratios
 
-    dw /= 2  # divide padding into 2 sides
+    dw /= 2  # 填充一分为二
     dh /= 2
 
     if shape[::-1] != new_unpad:  # resize

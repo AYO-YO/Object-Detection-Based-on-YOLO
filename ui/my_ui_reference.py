@@ -286,7 +286,7 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
             return
 
         flag = self.cap.open(video_name)
-        if flag == False:
+        if not flag:
             QtWidgets.QMessageBox.warning(
                 self, u"Warning", u"打开视频失败", buttons=QtWidgets.QMessageBox.Ok,
                 defaultButton=QtWidgets.QMessageBox.Ok)
@@ -330,7 +330,7 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
         if img is not None:
             showimg = img
             with torch.no_grad():
-                img = letterbox(img, new_shape=self.opt.img_size)[0]
+                img = letterbox(img, new_shape=self.imgsz)[0]
                 # Convert
                 # BGR to RGB, to 3x416x416
                 img = img[:, :, ::-1].transpose(2, 0, 1)
@@ -341,11 +341,11 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
                 if img.ndimension() == 3:
                     img = img.unsqueeze(0)
                 # Inference
-                pred = self.model(img, augment=self.opt.augment)[0]
+                pred = self.model(img, augment=self.augment)[0]
 
                 # Apply NMS
-                pred = non_max_suppression(pred, self.opt.conf_thres, self.opt.iou_thres, classes=self.opt.classes,
-                                           agnostic=self.opt.agnostic_nms)
+                pred = non_max_suppression(pred, self.conf_thres, self.iou_thres, classes=self.classes,
+                                           agnostic=self.agnostic_nms)
                 # Process detections
                 for i, det in enumerate(pred):  # detections per image
                     if det is not None and len(det):
@@ -359,7 +359,6 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
                             print(label)
                             save_one_box(
                                 xyxy, showimg)
-
             self.out.write(showimg)
             show = cv2.resize(showimg, (640, 480))
             self.result = cv2.cvtColor(show, cv2.COLOR_BGR2RGB)

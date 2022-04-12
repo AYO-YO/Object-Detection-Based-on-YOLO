@@ -362,8 +362,8 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
             self.out.write(showimg)
             show = cv2.resize(showimg, (640, 480))
             self.result = cv2.cvtColor(show, cv2.COLOR_BGR2RGB)
-            showImage = QtGui.QImage(self.result.data, self.result.shape[1], self.result.shape[0],
-                                     QtGui.QImage.Format_RGB888)
+            showImage = QtGui.QImage(
+                self.result.data, self.result.shape[1], self.result.shape[0], QtGui.QImage.Format_RGB888)
             self.label.setPixmap(QtGui.QPixmap.fromImage(showImage))
 
         else:

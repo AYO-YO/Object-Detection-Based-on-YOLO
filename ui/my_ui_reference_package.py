@@ -17,8 +17,8 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 
 from models.common import DetectMultiBackend
 from utils.datasets import LoadImages, LoadStreams, IMG_FORMATS, VID_FORMATS
-from utils.general import LOGGER, check_img_size, non_max_suppression, scale_coords, increment_path, xyxy2xywh, \
-    check_file, strip_optimizer, colorstr
+from utils.general import LOGGER, check_img_size, non_max_suppression, scale_coords, increment_path, check_file, \
+    strip_optimizer, colorstr
 from utils.plots import save_one_box, Annotator, colors
 from utils.torch_utils import select_device, time_sync
 
@@ -67,6 +67,7 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
         self.half = False  # 使用 FP16 半精度推理
         self.dnn = False  # 使用 OpenCV DNN 进行 ONNX 推理
         self.project = ROOT / 'tmp'  # 运行的目录
+        self.save_dir = increment_path(Path(self.project) / self.name, exist_ok=self.exist_ok)  # 保存的文件夹
 
         self.device = select_device(self.device)
         self.save_img = not self.nosave and not self.source.endswith('.txt')  # 保存推理图像
@@ -148,15 +149,12 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
                     p, self.im0, frame = path, im0s.copy(), getattr(dataset, 'frame', 0)
 
                 p = Path(p)  # to Path
-                self.save_path = str(f'./tmp{p.name}')  # im.jpg
-                txt_path = str(self.save_dir / 'labels' / p.stem) + (
-                    '' if dataset.mode == 'image' else f'_{frame}')  # im.txt
+                save_path = str(self.save_dir / p.name)  # im.jpg
                 s += '%gx%g ' % im.shape[2:]  # print string
-                gn = torch.tensor(self.im0.shape)[[1, 0, 1, 0]]  # normalization gain whwh
                 imc = self.im0.copy() if self.save_crop else self.im0  # for save_crop
                 annotator = Annotator(self.im0, line_width=self.line_thickness, example=str(self.names))
                 if len(det):
-                    # Rescale boxes from img_size to self.im0 size
+                    # 将框从 img_size 重新缩放为 im0 大小
                     det[:, :4] = scale_coords(im.shape[2:], det[:, :4], self.im0.shape).round()
 
                     # Print results
@@ -164,17 +162,11 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
                         n = (det[:, -1] == c).sum()  # detections per class
                         s += f"{n} {self.names[int(c)]}{'s' * (n > 1)}, "  # add to string
 
-                    # Write results
+                    # 将结果保存至本地
                     for *xyxy, conf, cls in reversed(det):
-                        if self.save_txt:  # Write to file
-                            xywh = (xyxy2xywh(torch.tensor(xyxy).view(1, 4)) / gn).view(-1).tolist()  # normalized xywh
-                            line = (cls, *xywh, conf) if self.save_conf else (cls, *xywh)  # label format
-                            with open(txt_path + '.txt', 'a') as f:
-                                f.write(('%g ' * len(line)).rstrip() % line + '\n')
-
                         if self.save_img or self.save_crop or self.view_img:  # Add bbox to image
                             c = int(cls)  # integer class
-                            label = None if self.self.hide_labels else (
+                            label = None if self.hide_labels else (
                                 self.names[c] if self.hide_conf else f'{self.names[c]} {conf:.2f}')
                             annotator.box_label(xyxy, label, color=colors(c, True))
                             if self.save_crop:
@@ -190,10 +182,10 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
                 # 保存检测结果
                 if self.save_img:
                     if dataset.mode == 'image':
-                        cv2.imwrite(self.save_path, self.im0)
+                        cv2.imwrite(save_path, self.im0)
                     else:  # 'video' or 'stream'
-                        if vid_path[i] != self.save_path:  # new video
-                            vid_path[i] = self.save_path
+                        if vid_path[i] != save_path:  # new video
+                            vid_path[i] = save_path
                             if isinstance(vid_writer[i], cv2.VideoWriter):
                                 vid_writer[i].release()  # release previous video writer
                             if vid_cap:  # video
@@ -203,7 +195,7 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
                             else:  # stream
                                 fps, w, h = 30, self.im0.shape[1], self.im0.shape[0]
                             save_path = str(
-                                Path(self.save_path).with_suffix('.mp4'))  # force *.mp4 suffix on results videos
+                                Path(save_path).with_suffix('.mp4'))  # force *.mp4 suffix on results videos
                             vid_writer[i] = cv2.VideoWriter(save_path, cv2.VideoWriter_fourcc(*'mp4v'), fps, (w, h))
                         vid_writer[i].write(self.im0)
 
@@ -220,12 +212,13 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
         if self.update:
             strip_optimizer(self.weights)  # update model (to fix SourceChangeWarning)
 
-    def showResult(self):
+    def showResult(self, mode='image'):
         result = cv2.cvtColor(self.im0, cv2.COLOR_BGR2BGRA)
-        self.result = cv2.resize(
-            self.result, (640, 480), interpolation=cv2.INTER_AREA)
+        result = cv2.resize(
+            result, (640, 480), interpolation=cv2.INTER_AREA)
+
         self.QtImg = QtGui.QImage(
-            self.result.data, self.result.shape[1], self.result.shape[0], QtGui.QImage.Format_RGB32)
+            result.data, result.shape[1], result.shape[0], QtGui.QImage.Format_RGB32)
         self.label.setPixmap(QtGui.QPixmap.fromImage(self.QtImg))
 
     def setupUi(self, MainWindow):
@@ -341,6 +334,7 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
         if not img_name:
             return
         print(f'已选择图片{img_name}...')
+        self.source = img_name
         self.detect()
         self.showResult()
 
@@ -364,6 +358,31 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
             self.pushButton_img.setDisabled(True)
             self.pushButton_camera.setDisabled(True)
 
+    # def button_camera_open(self):
+    #     if not self.timer_video.isActive():
+    #         # 默认使用第一个本地camera
+    #         flag = self.cap.open(0)
+    #         if not flag:
+    #             QtWidgets.QMessageBox.warning(
+    #                 self, u"Warning", u"打开摄像头失败", buttons=QtWidgets.QMessageBox.Ok,
+    #                 defaultButton=QtWidgets.QMessageBox.Ok)
+    #         else:
+    #             self.out = cv2.VideoWriter('prediction.avi', cv2.VideoWriter_fourcc(
+    #                 *'MJPG'), 20, (int(self.cap.get(3)), int(self.cap.get(4))))
+    #             self.timer_video.start(30)
+    #             self.pushButton_video.setDisabled(True)
+    #             self.pushButton_img.setDisabled(True)
+    #             self.pushButton_camera.setText(u"关闭摄像头")
+    #     else:
+    #         self.timer_video.stop()
+    #         self.cap.release()
+    #         self.out.release()
+    #         self.label.clear()
+    #         self.init_logo()
+    #         self.pushButton_video.setDisabled(False)
+    #         self.pushButton_img.setDisabled(False)
+    #         self.pushButton_camera.setText(u"摄像头检测")
+
     def button_camera_open(self):
         if not self.timer_video.isActive():
             # 默认使用第一个本地camera
@@ -373,9 +392,9 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
                     self, u"Warning", u"打开摄像头失败", buttons=QtWidgets.QMessageBox.Ok,
                     defaultButton=QtWidgets.QMessageBox.Ok)
             else:
-                self.out = cv2.VideoWriter('prediction.avi', cv2.VideoWriter_fourcc(
-                    *'MJPG'), 20, (int(self.cap.get(3)), int(self.cap.get(4))))
-                self.timer_video.start(30)
+                self.source = '0'
+                self.detect()
+                self.showResult()
                 self.pushButton_video.setDisabled(True)
                 self.pushButton_img.setDisabled(True)
                 self.pushButton_camera.setText(u"关闭摄像头")
@@ -390,81 +409,7 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
             self.pushButton_camera.setText(u"摄像头检测")
 
     def show_video_frame(self):
-
-        flag, img = self.cap.read()
-        if img is not None:
-            showimg = img
-            with torch.no_grad():
-                img = LoadStreams('0', img_size=self.imgsz, stride=self.stride, auto=self.pt)
-
-                # 开始推理
-                self.model.warmup(imgsz=(1, 3, *self.imgsz), half=self.half)
-                dt, seen = [0.0, 0.0, 0.0], 0
-                for path, im, im0s, vid_cap, s in img:
-                    t1 = time_sync()
-                    im = torch.from_numpy(im).to(self.device)
-                    im = im.half() if self.half else im.float()  # uint8 to fp16/32
-                    im /= 255  # 0 - 255 to 0.0 - 1.0
-                    if len(im.shape) == 3:
-                        im = im[None]  # expand for batch dim
-                    t2 = time_sync()
-                    dt[0] += t2 - t1
-
-                    # 推理
-                    self.visualize = False
-                    pred = self.model(im, augment=self.augment, visualize=self.visualize)
-                    t3 = time_sync()
-                    dt[1] += t3 - t2
-
-                    # NMS
-                    pred = non_max_suppression(pred, self.conf_thres, self.iou_thres, self.classes, self.agnostic_nms,
-                                               max_det=self.max_det)
-                    dt[2] += time_sync() - t3
-                    print(pred)
-
-                    # 处理预测
-                    for i, det in enumerate(pred):
-                        seen += 1
-                        self.im0, frame = im0s.copy(), getattr(img, 'frame', 0)
-                        s += '%gx%g ' % im.shape[2:]  # print string
-                        gn = torch.tensor(self.im0.shape)[[1, 0, 1, 0]]  # normalization gain whwh
-                        imc = self.im0.copy() if self.save_crop else self.im0  # for save_crop
-                        annotator = Annotator(self.im0, line_width=self.line_thickness, example=str(self.names))
-                        if len(det):
-                            # Rescale boxes from img_size to self.im0 size
-                            det[:, :4] = scale_coords(im.shape[2:], det[:, :4], self.im0.shape).round()
-                            # Write results
-                            for *xyxy, conf, cls in reversed(det):
-                                if self.save_txt:  # Write to file
-                                    xywh = (xyxy2xywh(torch.tensor(xyxy).view(1, 4)) / gn).view(
-                                        -1).tolist()  # normalized xywh
-                                    line = (cls, *xywh, conf) if self.save_conf else (cls, *xywh)  # label format
-
-                                if self.save_img or self.save_crop or self.view_img:  # Add bbox to image
-                                    c = int(cls)  # integer class
-                                    label = None if self.hide_labels else (
-                                        self.names[c] if self.hide_conf else f'{self.names[c]} {conf:.2f}')
-                                    annotator.box_label(xyxy, label, color=colors(c, True))
-                                    if self.save_crop:
-                                        save_one_box(xyxy, imc,
-                                                     file=self.save_dir / 'crops' / self.names[c] / f'{p.stem}.jpg',
-                                                     BGR=True)
-            self.out.write(showimg)
-            show = cv2.resize(showimg, (640, 480))
-            self.result = cv2.cvtColor(show, cv2.COLOR_BGR2RGB)
-            showImage = QtGui.QImage(self.result.data, self.result.shape[1], self.result.shape[0],
-                                     QtGui.QImage.Format_RGB888)
-            self.label.setPixmap(QtGui.QPixmap.fromImage(showImage))
-
-        else:
-            self.timer_video.stop()
-            self.cap.release()
-            self.out.release()
-            self.label.clear()
-            self.pushButton_video.setDisabled(False)
-            self.pushButton_img.setDisabled(False)
-            self.pushButton_camera.setDisabled(False)
-            self.init_logo()
+        pass
 
 
 if __name__ == '__main__':

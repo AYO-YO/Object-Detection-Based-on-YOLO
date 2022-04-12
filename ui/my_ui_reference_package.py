@@ -9,7 +9,6 @@ import random
 # WARNING! All changes made in this file will be lost!
 import sys
 from pathlib import Path
-from threading import Thread
 
 import cv2
 import numpy as np
@@ -361,7 +360,6 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
             self.pushButton_img.setDisabled(True)
             self.pushButton_camera.setDisabled(True)
 
-
     def button_camera_open(self):
         self.cap = cv2.VideoCapture()
         if not self.timer_video.isActive():
@@ -372,35 +370,9 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
                     self, u"Warning", u"打开摄像头失败", buttons=QtWidgets.QMessageBox.Ok,
                     defaultButton=QtWidgets.QMessageBox.Ok)
             else:
-                self.source = '0'
-                n = len(self.source)
-                imgs, fps, threads, frames = [None] * n, [0] * n, [None] * n, [0] * n
-                for i, s in enumerate(self.source):
-                    st = f'{i + 1}/{n}: {s}... '
-                    s = eval(s)
-                    w = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-                    h = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-                    _, imgs[i] = self.cap.read()  # guarantee first frame
-                    threads[i] = Thread(target=LoadStreams.update, args=([i, self.cap, s]), daemon=True)
-                    LOGGER.info(f"{st} Success ({frames[i]} frames {w}x{h} at {fps[i]:.2f} FPS)")
-
-                LOGGER.info('')  # newline
-                # 检查常见形状
-                s = np.stack(
-                    [letterbox(x, self.imgsz, stride=self.stride, auto=self.pt)[0].shape for x in imgs])
-                rect = np.unique(s, axis=0).shape[0] == 1  # 如果所有形状均相等，则推断正确
-
-                img0 = imgs.copy()
-                img = [letterbox(x, self.imgsz, stride=self.stride, auto=rect and self.pt)[0] for x in img0]
-
-                # Stack
-                img = np.stack(img, 0)
-
-                # Convert
-                img = img[..., ::-1].transpose((0, 3, 1, 2))  # BGR to RGB, BHWC to BCHW
-                img = np.ascontiguousarray(img)
-                self.im0 = img
-                self.showResult()
+                self.out = cv2.VideoWriter('prediction.avi', cv2.VideoWriter_fourcc(
+                    *'MJPG'), 20, (int(self.cap.get(3)), int(self.cap.get(4))))
+                self.timer_video.start(30)
                 self.pushButton_video.setDisabled(True)
                 self.pushButton_img.setDisabled(True)
                 self.pushButton_camera.setText(u"关闭摄像头")
@@ -415,7 +387,52 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
             self.pushButton_camera.setText(u"摄像头检测")
 
     def show_video_frame(self):
-        pass
+        flag, img = self.cap.read()
+        if img is not None:
+            self.im0 = img
+            with torch.no_grad():
+                img = letterbox(img, new_shape=self.imgsz)[0]
+                # Convert
+                # BGR to RGB, to 3x416x416
+                img = img[:, :, ::-1].transpose(2, 0, 1)
+                img = np.ascontiguousarray(img)
+                img = torch.from_numpy(img).to(self.device)
+                img = img.half() if self.half else img.float()  # uint8 to fp16/32
+                img /= 255.0  # 0 - 255 to 0.0 - 1.0
+                if img.ndimension() == 3:
+                    img = img.unsqueeze(0)
+                # Inference
+                pred = self.model(img, augment=self.augment)
+
+                # Apply NMS
+                pred = non_max_suppression(pred, classes=self.classes, agnostic=self.agnostic_nms)
+                # Process detections
+                annotator = Annotator(self.im0, line_width=self.line_thickness, example=str(self.names))
+                for i, det in enumerate(pred):  # detections per image
+                    if det is not None and len(det):
+                        det[:, :4] = scale_coords(img.shape[2:], det[:, :4], self.im0.shape).round()
+                        # Write results
+                        for *xyxy, conf, cls in reversed(det):
+                            c = int(cls)
+                            label = '%s %.2f' % (self.names[int(cls)], conf)
+                            annotator.box_label(xyxy, label, color=colors(c, True))
+                            print(label)
+            self.out.write(self.im0)
+            show = cv2.resize(self.im0, (640, 480))
+            self.result = cv2.cvtColor(show, cv2.COLOR_BGR2RGB)
+            showImage = QtGui.QImage(
+                self.result.data, self.result.shape[1], self.result.shape[0], QtGui.QImage.Format_RGB888)
+            self.label.setPixmap(QtGui.QPixmap.fromImage(showImage))
+
+        else:
+            self.timer_video.stop()
+            self.cap.release()
+            self.out.release()
+            self.label.clear()
+            self.pushButton_video.setDisabled(False)
+            self.pushButton_img.setDisabled(False)
+            self.pushButton_camera.setDisabled(False)
+            self.init_logo()
 
 
 if __name__ == '__main__':

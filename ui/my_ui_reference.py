@@ -11,13 +11,12 @@ import sys
 from pathlib import Path
 
 import cv2
-import numpy as np
 import torch
 import torch.backends.cudnn as cudnn
 from PyQt5 import QtCore, QtGui, QtWidgets
 
 from models.common import DetectMultiBackend
-from utils.datasets import letterbox, LoadImages
+from utils.datasets import LoadImages, LoadStreams
 from utils.general import LOGGER, check_img_size, non_max_suppression, scale_coords, increment_path, xyxy2xywh
 from utils.plots import save_one_box, Annotator, colors
 from utils.torch_utils import select_device, time_sync
@@ -324,41 +323,65 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
             self.pushButton_camera.setText(u"摄像头检测")
 
     def show_video_frame(self):
-        name_list = []
 
         flag, img = self.cap.read()
         if img is not None:
             showimg = img
             with torch.no_grad():
-                img = letterbox(img, new_shape=self.imgsz)[0]
-                # Convert
-                # BGR to RGB, to 3x416x416
-                img = img[:, :, ::-1].transpose(2, 0, 1)
-                img = np.ascontiguousarray(img)
-                img = torch.from_numpy(img).to(self.device)
-                img = img.half() if self.half else img.float()  # uint8 to fp16/32
-                img /= 255.0  # 0 - 255 to 0.0 - 1.0
-                if img.ndimension() == 3:
-                    img = img.unsqueeze(0)
-                # Inference
-                pred = self.model(img, augment=self.augment)[0]
+                img = LoadStreams('0', img_size=self.imgsz, stride=self.stride, auto=self.pt)
 
-                # Apply NMS
-                pred = non_max_suppression(pred, self.conf_thres, self.iou_thres, classes=self.classes,
-                                           agnostic=self.agnostic_nms)
-                # Process detections
-                for i, det in enumerate(pred):  # detections per image
-                    if det is not None and len(det):
-                        # Rescale boxes from img_size to im0 size
-                        det[:, :4] = scale_coords(
-                            img.shape[2:], det[:, :4], showimg.shape).round()
-                        # Write results
-                        for *xyxy, conf, cls in reversed(det):
-                            label = '%s %.2f' % (self.names[int(cls)], conf)
-                            name_list.append(self.names[int(cls)])
-                            print(label)
-                            save_one_box(
-                                xyxy, showimg)
+                # 开始推理
+                self.model.warmup(imgsz=(1, 3, *self.imgsz), half=self.half)
+                dt, seen = [0.0, 0.0, 0.0], 0
+                for path, im, im0s, vid_cap, s in img:
+                    t1 = time_sync()
+                    im = torch.from_numpy(im).to(self.device)
+                    im = im.half() if self.half else im.float()  # uint8 to fp16/32
+                    im /= 255  # 0 - 255 to 0.0 - 1.0
+                    if len(im.shape) == 3:
+                        im = im[None]  # expand for batch dim
+                    t2 = time_sync()
+                    dt[0] += t2 - t1
+
+                    # 推理
+                    self.visualize = False
+                    pred = self.model(im, augment=self.augment, visualize=self.visualize)
+                    t3 = time_sync()
+                    dt[1] += t3 - t2
+
+                    # NMS
+                    pred = non_max_suppression(pred, self.conf_thres, self.iou_thres, self.classes, self.agnostic_nms,
+                                               max_det=self.max_det)
+                    dt[2] += time_sync() - t3
+                    print(pred)
+
+                    # 处理预测
+                    for i, det in enumerate(pred):
+                        seen += 1
+                        im0, frame = im0s.copy(), getattr(img, 'frame', 0)
+                        s += '%gx%g ' % im.shape[2:]  # print string
+                        gn = torch.tensor(im0.shape)[[1, 0, 1, 0]]  # normalization gain whwh
+                        imc = im0.copy() if self.save_crop else im0  # for save_crop
+                        annotator = Annotator(im0, line_width=self.line_thickness, example=str(self.names))
+                        if len(det):
+                            # Rescale boxes from img_size to im0 size
+                            det[:, :4] = scale_coords(im.shape[2:], det[:, :4], im0.shape).round()
+                            # Write results
+                            for *xyxy, conf, cls in reversed(det):
+                                if self.save_txt:  # Write to file
+                                    xywh = (xyxy2xywh(torch.tensor(xyxy).view(1, 4)) / gn).view(
+                                        -1).tolist()  # normalized xywh
+                                    line = (cls, *xywh, conf) if self.save_conf else (cls, *xywh)  # label format
+
+                                if self.save_img or self.save_crop or self.view_img:  # Add bbox to image
+                                    c = int(cls)  # integer class
+                                    label = None if self.hide_labels else (
+                                        self.names[c] if self.hide_conf else f'{self.names[c]} {conf:.2f}')
+                                    annotator.box_label(xyxy, label, color=colors(c, True))
+                                    if self.save_crop:
+                                        save_one_box(xyxy, imc,
+                                                     file=self.save_dir / 'crops' / self.names[c] / f'{p.stem}.jpg',
+                                                     BGR=True)
             self.out.write(showimg)
             show = cv2.resize(showimg, (640, 480))
             self.result = cv2.cvtColor(show, cv2.COLOR_BGR2RGB)

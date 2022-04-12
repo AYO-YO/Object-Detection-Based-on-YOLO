@@ -93,6 +93,7 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
 
     @torch.no_grad()
     def detect(self):
+        # TODO: 应分离数据处理的相关逻辑和预测部分的逻辑
         self.source = str(self.source)
         save_img = not self.nosave and not self.source.endswith('.txt')  # save inference images
         is_file = Path(self.source).suffix[1:] in (IMG_FORMATS + VID_FORMATS)
@@ -104,6 +105,7 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
         # Dataloader
         if webcam:
             cudnn.benchmark = True  # 设置 True 以加速恒定图像尺寸推断
+            # TODO: 摄像头集成在此，有无法关闭的BUG，需要手动实现摄像头帧的捕捉和预测
             dataset = LoadStreams(self.source, img_size=self.imgsz, stride=self.stride, auto=self.pt)
             bs = len(dataset)  # batch_size
         else:
@@ -136,10 +138,10 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
                                        max_det=self.max_det)
             dt[2] += time_sync() - t3
 
-            # Second-stage classifier (optional)
+            # 二级分类器（可选）
             # pred = utils.general.apply_classifier(pred, classifier_model, im, im0s)
 
-            # Process predictions
+            # 过程预测
             for i, det in enumerate(pred):  # per image
                 seen += 1
                 if webcam:  # batch_size >= 1
@@ -179,26 +181,26 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
                 if self.view_img:
                     cv2.imshow(str(p), self.im0)
                     cv2.waitKey(1)  # 1 millisecond
-
-                # 保存检测结果
-                if self.save_img:
-                    if dataset.mode == 'image':
-                        cv2.imwrite(save_path, self.im0)
-                    else:  # 'video' or 'stream'
-                        if vid_path[i] != save_path:  # new video
-                            vid_path[i] = save_path
-                            if isinstance(vid_writer[i], cv2.VideoWriter):
-                                vid_writer[i].release()  # release previous video writer
-                            if vid_cap:  # video
-                                fps = vid_cap.get(cv2.CAP_PROP_FPS)
-                                w = int(vid_cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-                                h = int(vid_cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-                            else:  # stream
-                                fps, w, h = 30, self.im0.shape[1], self.im0.shape[0]
-                            save_path = str(
-                                Path(save_path).with_suffix('.mp4'))  # force *.mp4 suffix on results videos
-                            vid_writer[i] = cv2.VideoWriter(save_path, cv2.VideoWriter_fourcc(*'mp4v'), fps, (w, h))
-                        vid_writer[i].write(self.im0)
+                # 
+                # # 保存检测结果
+                # if self.save_img:
+                #     if dataset.mode == 'image':
+                #         cv2.imwrite(save_path, self.im0)
+                #     else:  # 'video' or 'stream'
+                #         if vid_path[i] != save_path:  # new video
+                #             vid_path[i] = save_path
+                #             if isinstance(vid_writer[i], cv2.VideoWriter):
+                #                 vid_writer[i].release()  # release previous video writer
+                #             if vid_cap:  # video
+                #                 fps = vid_cap.get(cv2.CAP_PROP_FPS)
+                #                 w = int(vid_cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+                #                 h = int(vid_cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+                #             else:  # stream
+                #                 fps, w, h = 30, self.im0.shape[1], self.im0.shape[0]
+                #             save_path = str(
+                #                 Path(save_path).with_suffix('.mp4'))  # force *.mp4 suffix on results videos
+                #             vid_writer[i] = cv2.VideoWriter(save_path, cv2.VideoWriter_fourcc(*'mp4v'), fps, (w, h))
+                #         vid_writer[i].write(self.im0)
 
             # Print time (inference-only)
             LOGGER.info(f'{s}Done. ({t3 - t2:.3f}s)')
@@ -369,12 +371,13 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
                     self, u"Warning", u"打开摄像头失败", buttons=QtWidgets.QMessageBox.Ok,
                     defaultButton=QtWidgets.QMessageBox.Ok)
             else:
-                self.out = cv2.VideoWriter('prediction.avi', cv2.VideoWriter_fourcc(
+                self.out = cv2.VideoWriter('./tmp/video/prediction.avi', cv2.VideoWriter_fourcc(
                     *'MJPG'), 20, (int(self.cap.get(3)), int(self.cap.get(4))))
                 self.timer_video.start(30)
                 self.pushButton_video.setDisabled(True)
                 self.pushButton_img.setDisabled(True)
                 self.pushButton_camera.setText(u"关闭摄像头")
+
         else:
             self.shutdown_camera()
 
@@ -391,13 +394,12 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
     def show_video_frame(self):
         _, img = self.cap.read()
         if img is not None:
-            self.im0 = img
-            self.source = '0'
-            with torch.no_grad():
-                self.detect()
-            self.showResult()
-
+            # TODO: 手动捕获帧再读取的方式虽然可以有效关闭摄像头，但是帧率可怜
+            cv2.imwrite('./tmp/tmp.jpg', img)
+            self.source = './tmp/tmp.jpg'
+            self.detect()
         else:
+            print('尝试关闭摄像头')
             self.shutdown_camera()
 
 

@@ -319,9 +319,9 @@ class LoadStreams:
             self.threads[i].start()
         LOGGER.info('')  # newline
 
-        # check for common shapes
+        # 检查常见形状
         s = np.stack([letterbox(x, self.img_size, stride=self.stride, auto=self.auto)[0].shape for x in self.imgs])
-        self.rect = np.unique(s, axis=0).shape[0] == 1  # rect inference if all shapes equal
+        self.rect = np.unique(s, axis=0).shape[0] == 1  # 如果所有形状均相等，则推断正确
         if not self.rect:
             LOGGER.warning('WARNING: Stream shapes differ. For optimal performance supply similarly-shaped streams.')
 

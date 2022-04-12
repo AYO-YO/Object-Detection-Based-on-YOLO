@@ -16,8 +16,9 @@ import torch.backends.cudnn as cudnn
 from PyQt5 import QtCore, QtGui, QtWidgets
 
 from models.common import DetectMultiBackend
-from utils.datasets import LoadImages, LoadStreams
-from utils.general import LOGGER, check_img_size, non_max_suppression, scale_coords, increment_path, xyxy2xywh
+from utils.datasets import LoadImages, LoadStreams, IMG_FORMATS, VID_FORMATS
+from utils.general import LOGGER, check_img_size, non_max_suppression, scale_coords, increment_path, xyxy2xywh, \
+    check_file, strip_optimizer, colorstr
 from utils.plots import save_one_box, Annotator, colors
 from utils.torch_utils import select_device, time_sync
 
@@ -31,6 +32,7 @@ ROOT = Path(os.path.relpath(ROOT, Path.cwd()))  # relative
 class Ui_MainWindow(QtWidgets.QMainWindow):
     def __init__(self, parent=None):
         super(Ui_MainWindow, self).__init__(parent)
+        self.im0 = None
         self.timer_video = QtCore.QTimer()
         self.setupUi(self)
         self.init_logo()
@@ -57,25 +59,24 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
         self.augment = False  # 增强推理
         self.visualize = False  # 可视化特征
         self.update = False  # 更新所有模型
-        self.name = 'exp'  # 保存结果到 project/name
+        self.name = 'tmp'  # 保存结果到 project/name
         self.exist_ok = False  # 是否使用现有的 project/name 若为True，则使用最近的一次结果文件夹
         self.line_thickness = 3  # 边框厚度(px)
         self.hide_labels = False  # 是否隐藏标签
         self.hide_conf = False  # 隐藏置信度
         self.half = False  # 使用 FP16 半精度推理
         self.dnn = False  # 使用 OpenCV DNN 进行 ONNX 推理
-        self.project = ROOT / 'runs/detect'  # 运行的目录
+        self.project = ROOT / 'tmp'  # 运行的目录
+
         self.device = select_device(self.device)
-        self.save_dir = increment_path(Path(self.project) / self.name, exist_ok=self.exist_ok)  # increment run
-        (self.save_dir / 'labels' if self.save_txt else self.save_dir).mkdir(parents=True, exist_ok=True)  # make dir
-        self.save_img = not self.nosave and not self.source.endswith('.txt')  # save inference images
+        self.save_img = not self.nosave and not self.source.endswith('.txt')  # 保存推理图像
         cudnn.benchmark = True
 
         # 加载模型
         # TODO: 加入手动选择模型后应将此处的加载模型改为手动选择的路径
         self.model = DetectMultiBackend(self.weights, device=self.device, dnn=self.dnn, data=self.data)
         self.stride, self.names, self.pt, self.jit, self.onnx, self.engine = self.model.stride, self.model.names, self.model.pt, self.model.jit, self.model.onnx, self.model.engine
-        self.imgsz = check_img_size(self.imgsz, s=self.stride)  # check img_size
+        self.imgsz = check_img_size(self.imgsz, s=self.stride)  # 检查 img_size
         # 仅在 CUDA 上支持半精度
         self.half &= (self.pt or self.jit or self.onnx or self.engine) and self.device.type != 'cpu'
         if self.pt or self.jit:
@@ -86,10 +87,146 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
             self.half = self.model.trt_fp16_input
 
         # 获取名称和颜色
-        self.names = self.model.module.names if hasattr(
-            self.model, 'module') else self.model.names
-        self.colors = [[random.randint(125, 255)
-                        for _ in range(3)] for _ in self.names]
+        self.names = self.model.module.names if hasattr(self.model, 'module') else self.model.names
+        self.colors = [[random.randint(125, 255) for _ in range(3)] for _ in self.names]
+
+    @torch.no_grad()
+    def detect(self):
+        self.source = str(self.source)
+        save_img = not self.nosave and not self.source.endswith('.txt')  # save inference images
+        is_file = Path(self.source).suffix[1:] in (IMG_FORMATS + VID_FORMATS)
+        is_url = self.source.lower().startswith(('rtsp://', 'rtmp://', 'http://', 'https://'))
+        webcam = self.source.isnumeric() or self.source.endswith('.txt') or (is_url and not is_file)
+        if is_url and is_file:
+            self.source = check_file(self.source)  # download
+
+        # Dataloader
+        if webcam:
+            cudnn.benchmark = True  # 设置 True 以加速恒定图像尺寸推断
+            dataset = LoadStreams(self.source, img_size=self.imgsz, stride=self.stride, auto=self.pt)
+            bs = len(dataset)  # batch_size
+        else:
+            dataset = LoadImages(self.source, img_size=self.imgsz, stride=self.stride, auto=self.pt)
+            bs = 1  # batch_size
+        # 视频检测
+        vid_path, vid_writer = [None] * bs, [None] * bs
+
+        # 开始推理
+        self.model.warmup(imgsz=(1 if self.pt else bs, 3, *self.imgsz), half=self.half)  # 热身
+        dt, seen = [0.0, 0.0, 0.0], 0
+        for path, im, im0s, vid_cap, s in dataset:
+            t1 = time_sync()
+            im = torch.from_numpy(im).to(self.device)
+            im = im.half() if self.half else im.float()  # uint8 to fp16/32
+            im /= 255  # 0 - 255 to 0.0 - 1.0
+            if len(im.shape) == 3:
+                im = im[None]  # expand for batch dim
+            t2 = time_sync()
+            dt[0] += t2 - t1
+
+            # 推理
+            self.visualize = increment_path(self.save_dir / Path(path).stem, mkdir=True) if self.visualize else False
+            pred = self.model(im, augment=self.augment, visualize=self.visualize)
+            t3 = time_sync()
+            dt[1] += t3 - t2
+
+            # NMS
+            pred = non_max_suppression(pred, self.conf_thres, self.iou_thres, self.classes, self.agnostic_nms,
+                                       max_det=self.max_det)
+            dt[2] += time_sync() - t3
+
+            # Second-stage classifier (optional)
+            # pred = utils.general.apply_classifier(pred, classifier_model, im, im0s)
+
+            # Process predictions
+            for i, det in enumerate(pred):  # per image
+                seen += 1
+                if webcam:  # batch_size >= 1
+                    p, self.im0, frame = path[i], im0s[i].copy(), dataset.count
+                    s += f'{i}: '
+                else:
+                    p, self.im0, frame = path, im0s.copy(), getattr(dataset, 'frame', 0)
+
+                p = Path(p)  # to Path
+                self.save_path = str(f'./tmp{p.name}')  # im.jpg
+                txt_path = str(self.save_dir / 'labels' / p.stem) + (
+                    '' if dataset.mode == 'image' else f'_{frame}')  # im.txt
+                s += '%gx%g ' % im.shape[2:]  # print string
+                gn = torch.tensor(self.im0.shape)[[1, 0, 1, 0]]  # normalization gain whwh
+                imc = self.im0.copy() if self.save_crop else self.im0  # for save_crop
+                annotator = Annotator(self.im0, line_width=self.line_thickness, example=str(self.names))
+                if len(det):
+                    # Rescale boxes from img_size to self.im0 size
+                    det[:, :4] = scale_coords(im.shape[2:], det[:, :4], self.im0.shape).round()
+
+                    # Print results
+                    for c in det[:, -1].unique():
+                        n = (det[:, -1] == c).sum()  # detections per class
+                        s += f"{n} {self.names[int(c)]}{'s' * (n > 1)}, "  # add to string
+
+                    # Write results
+                    for *xyxy, conf, cls in reversed(det):
+                        if self.save_txt:  # Write to file
+                            xywh = (xyxy2xywh(torch.tensor(xyxy).view(1, 4)) / gn).view(-1).tolist()  # normalized xywh
+                            line = (cls, *xywh, conf) if self.save_conf else (cls, *xywh)  # label format
+                            with open(txt_path + '.txt', 'a') as f:
+                                f.write(('%g ' * len(line)).rstrip() % line + '\n')
+
+                        if self.save_img or self.save_crop or self.view_img:  # Add bbox to image
+                            c = int(cls)  # integer class
+                            label = None if self.self.hide_labels else (
+                                self.names[c] if self.hide_conf else f'{self.names[c]} {conf:.2f}')
+                            annotator.box_label(xyxy, label, color=colors(c, True))
+                            if self.save_crop:
+                                save_one_box(xyxy, imc, file=self.save_dir / 'crops' / self.names[c] / f'{p.stem}.jpg',
+                                             BGR=True)
+
+                # 串流结果
+                self.im0 = annotator.result()
+                if self.view_img:
+                    cv2.imshow(str(p), self.im0)
+                    cv2.waitKey(1)  # 1 millisecond
+
+                # 保存检测结果
+                if self.save_img:
+                    if dataset.mode == 'image':
+                        cv2.imwrite(self.save_path, self.im0)
+                    else:  # 'video' or 'stream'
+                        if vid_path[i] != self.save_path:  # new video
+                            vid_path[i] = self.save_path
+                            if isinstance(vid_writer[i], cv2.VideoWriter):
+                                vid_writer[i].release()  # release previous video writer
+                            if vid_cap:  # video
+                                fps = vid_cap.get(cv2.CAP_PROP_FPS)
+                                w = int(vid_cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+                                h = int(vid_cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+                            else:  # stream
+                                fps, w, h = 30, self.im0.shape[1], self.im0.shape[0]
+                            save_path = str(
+                                Path(self.save_path).with_suffix('.mp4'))  # force *.mp4 suffix on results videos
+                            vid_writer[i] = cv2.VideoWriter(save_path, cv2.VideoWriter_fourcc(*'mp4v'), fps, (w, h))
+                        vid_writer[i].write(self.im0)
+
+            # Print time (inference-only)
+            LOGGER.info(f'{s}Done. ({t3 - t2:.3f}s)')
+
+        # Print results
+        t = tuple(x / seen * 1E3 for x in dt)  # speeds per image
+        LOGGER.info(
+            f'Speed: %.1fms pre-process, %.1fms inference, %.1fms NMS per image at shape {(1, 3, *self.imgsz)}' % t)
+        if self.save_txt or save_img:
+            s = f"\n{len(list(self.save_dir.glob('labels/*.txt')))} labels saved to {self.save_dir / 'labels'}" if self.save_txt else ''
+            LOGGER.info(f"Results saved to {colorstr('bold', self.save_dir)}{s}")
+        if self.update:
+            strip_optimizer(self.weights)  # update model (to fix SourceChangeWarning)
+
+    def showResult(self):
+        result = cv2.cvtColor(self.im0, cv2.COLOR_BGR2BGRA)
+        self.result = cv2.resize(
+            self.result, (640, 480), interpolation=cv2.INTER_AREA)
+        self.QtImg = QtGui.QImage(
+            self.result.data, self.result.shape[1], self.result.shape[0], QtGui.QImage.Format_RGB32)
+        self.label.setPixmap(QtGui.QPixmap.fromImage(self.QtImg))
 
     def setupUi(self, MainWindow):
         MainWindow.setObjectName("识别系统")
@@ -203,79 +340,9 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
             self, "打开图片", "", "*.jpg;;*.png;;All Files(*)")
         if not img_name:
             return
-
         print(f'已选择图片{img_name}...')
-
-        with torch.no_grad():
-            img = LoadImages(img_name, img_size=self.imgsz, stride=self.stride, auto=self.pt)
-
-            # 开始推理
-            self.model.warmup(imgsz=(1, 3, *self.imgsz), half=self.half)
-            dt, seen = [0.0, 0.0, 0.0], 0
-            for path, im, im0s, vid_cap, s in img:
-                t1 = time_sync()
-                im = torch.from_numpy(im).to(self.device)
-                im = im.half() if self.half else im.float()  # uint8 to fp16/32
-                im /= 255  # 0 - 255 to 0.0 - 1.0
-                if len(im.shape) == 3:
-                    im = im[None]  # expand for batch dim
-                t2 = time_sync()
-                dt[0] += t2 - t1
-
-                # 推理
-                self.visualize = increment_path(Path(path).stem, mkdir=True) if self.visualize else False
-                pred = self.model(im, augment=self.augment, visualize=self.visualize)
-                t3 = time_sync()
-                dt[1] += t3 - t2
-
-                # NMS
-                pred = non_max_suppression(pred, self.conf_thres, self.iou_thres, self.classes, self.agnostic_nms,
-                                           max_det=self.max_det)
-                dt[2] += time_sync() - t3
-                print(pred)
-
-                # 第二阶段分类器（可选）
-                # pred = utils.general.apply_classifier(pred, classifier_model, im, im0s)
-
-                # 处理预测
-                for i, det in enumerate(pred):
-                    seen += 1
-                    p, im0, frame = path, im0s.copy(), getattr(img, 'frame', 0)
-                    p = Path(p)
-                    save_path = str(p.name)  # im.jpg
-                    txt_path = str(f'labels/{p.stem}') + ('' if img.mode == 'image' else f'_{frame}')  # im.txt
-                    s += '%gx%g ' % im.shape[2:]  # print string
-                    gn = torch.tensor(im0.shape)[[1, 0, 1, 0]]  # normalization gain whwh
-                    imc = im0.copy() if self.save_crop else im0  # for save_crop
-                    annotator = Annotator(im0, line_width=self.line_thickness, example=str(self.names))
-                    if len(det):
-                        # Rescale boxes from img_size to im0 size
-                        det[:, :4] = scale_coords(im.shape[2:], det[:, :4], im0.shape).round()
-                        # Write results
-                        for *xyxy, conf, cls in reversed(det):
-                            if self.save_txt:  # Write to file
-                                xywh = (xyxy2xywh(torch.tensor(xyxy).view(1, 4)) / gn).view(
-                                    -1).tolist()  # normalized xywh
-                                line = (cls, *xywh, conf) if self.save_conf else (cls, *xywh)  # label format
-                                with open(txt_path + '.txt', 'a') as f:
-                                    f.write(('%g ' * len(line)).rstrip() % line + '\n')
-
-                            if self.save_img or self.save_crop or self.view_img:  # Add bbox to image
-                                c = int(cls)  # integer class
-                                label = None if self.hide_labels else (
-                                    self.names[c] if self.hide_conf else f'{self.names[c]} {conf:.2f}')
-                                annotator.box_label(xyxy, label, color=colors(c, True))
-                                if self.save_crop:
-                                    save_one_box(xyxy, imc,
-                                                 file=self.save_dir / 'crops' / self.names[c] / f'{p.stem}.jpg',
-                                                 BGR=True)
-        cv2.imwrite(save_path, im0)
-        self.result = cv2.cvtColor(im0, cv2.COLOR_BGR2BGRA)
-        self.result = cv2.resize(
-            self.result, (640, 480), interpolation=cv2.INTER_AREA)
-        self.QtImg = QtGui.QImage(
-            self.result.data, self.result.shape[1], self.result.shape[0], QtGui.QImage.Format_RGB32)
-        self.label.setPixmap(QtGui.QPixmap.fromImage(self.QtImg))
+        self.detect()
+        self.showResult()
 
     def button_video_open(self):
         video_name, _ = QtWidgets.QFileDialog.getOpenFileName(
@@ -301,7 +368,7 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
         if not self.timer_video.isActive():
             # 默认使用第一个本地camera
             flag = self.cap.open(0)
-            if flag == False:
+            if not flag:
                 QtWidgets.QMessageBox.warning(
                     self, u"Warning", u"打开摄像头失败", buttons=QtWidgets.QMessageBox.Ok,
                     defaultButton=QtWidgets.QMessageBox.Ok)
@@ -358,14 +425,14 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
                     # 处理预测
                     for i, det in enumerate(pred):
                         seen += 1
-                        im0, frame = im0s.copy(), getattr(img, 'frame', 0)
+                        self.im0, frame = im0s.copy(), getattr(img, 'frame', 0)
                         s += '%gx%g ' % im.shape[2:]  # print string
-                        gn = torch.tensor(im0.shape)[[1, 0, 1, 0]]  # normalization gain whwh
-                        imc = im0.copy() if self.save_crop else im0  # for save_crop
-                        annotator = Annotator(im0, line_width=self.line_thickness, example=str(self.names))
+                        gn = torch.tensor(self.im0.shape)[[1, 0, 1, 0]]  # normalization gain whwh
+                        imc = self.im0.copy() if self.save_crop else self.im0  # for save_crop
+                        annotator = Annotator(self.im0, line_width=self.line_thickness, example=str(self.names))
                         if len(det):
-                            # Rescale boxes from img_size to im0 size
-                            det[:, :4] = scale_coords(im.shape[2:], det[:, :4], im0.shape).round()
+                            # Rescale boxes from img_size to self.im0 size
+                            det[:, :4] = scale_coords(im.shape[2:], det[:, :4], self.im0.shape).round()
                             # Write results
                             for *xyxy, conf, cls in reversed(det):
                                 if self.save_txt:  # Write to file

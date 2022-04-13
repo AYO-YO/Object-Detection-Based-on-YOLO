@@ -316,7 +316,15 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
         self.pre_detect()
         self.showResult()
 
+    def load_video_stream(self):
+        self.out = cv2.VideoWriter('./tmp/video/prediction.avi', cv2.VideoWriter_fourcc(
+            *'MJPG'), 20, (int(self.cap.get(3)), int(self.cap.get(4))))
+        self.timer_video.start(24)
+        self.pushButton_video.setDisabled(True)
+        self.pushButton_img.setDisabled(True)
+
     def button_video_open(self):
+        self.cap = cv2.VideoCapture()
         video_name, _ = QtWidgets.QFileDialog.getOpenFileName(
             self, "打开视频", "", "*.mp4;;*.avi;;All Files(*)")
 
@@ -329,11 +337,7 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
                 self, u"Warning", u"打开视频失败", buttons=QtWidgets.QMessageBox.Ok,
                 defaultButton=QtWidgets.QMessageBox.Ok)
         else:
-            self.out = cv2.VideoWriter('prediction.avi', cv2.VideoWriter_fourcc(
-                *'MJPG'), 20, (int(self.cap.get(3)), int(self.cap.get(4))))
-            self.timer_video.start(30)
-            self.pushButton_video.setDisabled(True)
-            self.pushButton_img.setDisabled(True)
+            self.load_video_stream()
             self.pushButton_camera.setDisabled(True)
 
     def button_camera_open(self):
@@ -346,11 +350,7 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
                     self, u"Warning", u"打开摄像头失败", buttons=QtWidgets.QMessageBox.Ok,
                     defaultButton=QtWidgets.QMessageBox.Ok)
             else:
-                self.out = cv2.VideoWriter('./tmp/video/prediction.avi', cv2.VideoWriter_fourcc(
-                    *'MJPG'), 20, (int(self.cap.get(3)), int(self.cap.get(4))))
-                self.timer_video.start(30)
-                self.pushButton_video.setDisabled(True)
-                self.pushButton_img.setDisabled(True)
+                self.load_video_stream()
                 self.pushButton_camera.setText(u"关闭摄像头")
 
         else:
@@ -364,6 +364,7 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
         self.init_logo()
         self.pushButton_video.setDisabled(False)
         self.pushButton_img.setDisabled(False)
+        self.pushButton_camera.setDisabled(False)
         self.pushButton_camera.setText(u"摄像头检测")
 
     def show_video_frame(self):
@@ -378,10 +379,9 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
             img = img[..., ::-1].transpose((0, 3, 1, 2))  # BGR to RGB, BHWC to BCHW
             img = np.ascontiguousarray(img)
 
-            # 开始推理
+            # 推理
             self.detect(img, self.im_result)
         else:
-            print('尝试关闭摄像头')
             self.shutdown_camera()
 
 

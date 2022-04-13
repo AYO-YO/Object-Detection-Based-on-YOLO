@@ -11,11 +11,13 @@ import sys
 from pathlib import Path
 
 import cv2
+import numpy as np
 import torch
 import torch.backends.cudnn as cudnn
 from PyQt5 import QtCore, QtGui, QtWidgets
 
 from models.common import DetectMultiBackend
+from utils.augmentations import letterbox
 from utils.datasets import LoadImages, LoadStreams, IMG_FORMATS, VID_FORMATS
 from utils.general import LOGGER, check_img_size, non_max_suppression, scale_coords, increment_path, check_file, \
     strip_optimizer, colorstr
@@ -395,9 +397,51 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
         _, img = self.cap.read()
         if img is not None:
             # TODO: 手动捕获帧再读取的方式虽然可以有效关闭摄像头，但是帧率可怜
-            cv2.imwrite('./tmp/tmp.jpg', img)
-            self.source = './tmp/tmp.jpg'
-            self.detect()
+            # 数据处理
+            self.im0 = img.copy()
+            img = [letterbox(img, self.imgsz, stride=self.stride)[0]]
+            img = np.stack(img, 0)
+
+            # 转换
+            img = img[..., ::-1].transpose((0, 3, 1, 2))  # BGR to RGB, BHWC to BCHW
+            img = np.ascontiguousarray(img)
+
+            # 开始推理
+            img = torch.from_numpy(img).to(self.device)
+            img = img.half() if self.half else img.float()  # uint8 to fp16/32
+            img /= 255  # 0 - 255 to 0.0 - 1.0 色值转换
+            if len(img.shape) == 3:
+                img = img[None]  # expand for batch dim
+            pred = self.model(img, augment=self.augment, visualize=self.visualize)
+            pred = non_max_suppression(pred, self.conf_thres, self.iou_thres, self.classes, self.agnostic_nms,
+                                       max_det=self.max_det)
+            s = ''
+
+            # 第二阶段分类器（可选）
+            # pred = utils.general.apply_classifier(pred, classifier_model, im, im0s)
+
+            for i, det in enumerate(pred):
+                annotator = Annotator(self.im0, line_width=self.line_thickness, example=str(self.names))
+                if len(det):
+                    det[:, :4] = scale_coords(img.shape[2:], det[:, :4], self.im0.shape).round()
+
+                    # 输出结果
+                    for c in det[:, -1].unique():
+                        n = (det[:, -1] == c).sum()  # detections per class
+                        s += f"{n} {self.names[int(c)]}{'s' * (n > 1)}, "  # 结果保存到字符串
+
+                    for *xyxy, conf, cls in reversed(det):
+                        c = int(cls)  # integer class
+                        label = None if self.hide_labels else (
+                            self.names[c] if self.hide_conf else f'{self.names[c]} {conf:.2f}')
+                        annotator.box_label(xyxy, label, color=colors(c, True))
+                    
+                self.im0 = annotator.result()
+                self.showResult()
+
+            # cv2.imwrite('./tmp/tmp.jpg', img)
+            # self.source = './tmp/tmp.jpg'
+            # self.detect()
         else:
             print('尝试关闭摄像头')
             self.shutdown_camera()

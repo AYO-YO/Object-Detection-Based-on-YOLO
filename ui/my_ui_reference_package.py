@@ -34,7 +34,7 @@ ROOT = Path(os.path.relpath(ROOT, Path.cwd()))  # relative
 class Ui_MainWindow(QtWidgets.QMainWindow):
     def __init__(self, parent=None):
         super(Ui_MainWindow, self).__init__(parent)
-        self.im0 = None
+        self.im_result = None
         self.timer_video = QtCore.QTimer()
         self.setupUi(self)
         self.init_logo()
@@ -43,7 +43,7 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
         self.weights = ROOT / 'weights/yolov5s.pt'  # 权重模型
         self.source = str(ROOT / 'data/images')  # 文件/目录/URL/通配符批量选择文件, 0 -- 摄像头
         self.data = ROOT / 'data/coco128.yaml'  # 数据集.yaml路径
-        self.imgsz = (640, 640)  # 图片大小(height, width)
+        self.img_sz = (640, 640)  # 图片大小(height, width)
         self.out = None
         self.augment = True  # 增强推理
         self.visualize = False  # 可视化特征
@@ -70,6 +70,7 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
         self.dnn = False  # 使用 OpenCV DNN 进行 ONNX 推理
         self.project = ROOT / 'tmp'  # 运行的目录
         self.save_dir = increment_path(Path(self.project) / self.name, exist_ok=self.exist_ok)  # 保存的文件夹
+        self.seen = 0
 
         self.device = select_device(self.device)
         self.save_img = not self.nosave and not self.source.endswith('.txt')  # 保存推理图像
@@ -79,7 +80,7 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
         # TODO: 加入手动选择模型后应将此处的加载模型改为手动选择的路径
         self.model = DetectMultiBackend(self.weights, device=self.device, dnn=self.dnn, data=self.data)
         self.stride, self.names, self.pt, self.jit, self.onnx, self.engine = self.model.stride, self.model.names, self.model.pt, self.model.jit, self.model.onnx, self.model.engine
-        self.imgsz = check_img_size(self.imgsz, s=self.stride)  # 检查 img_size
+        self.img_sz = check_img_size(self.img_sz, s=self.stride)  # 检查 img_size
         # 仅在 CUDA 上支持半精度
         self.half &= (self.pt or self.jit or self.onnx or self.engine) and self.device.type != 'cpu'
         if self.pt or self.jit:
@@ -94,8 +95,66 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
         self.colors = [[random.randint(125, 255) for _ in range(3)] for _ in self.names]
 
     @torch.no_grad()
-    def detect(self):
-        # TODO: 应分离数据处理的相关逻辑和预测部分的逻辑
+    def detect(self, im, im0s):
+        is_file = Path(self.source).suffix[1:] in (IMG_FORMATS + VID_FORMATS)
+        dt, seen, s = [0.0, 0.0, 0.0], 0, ''
+        t1 = time_sync()
+        im = torch.from_numpy(im).to(self.device)
+        im = im.half() if self.half else im.float()  # uint8 to fp16/32
+        im /= 255  # 0 - 255 to 0.0 - 1.0
+        if len(im.shape) == 3:
+            im = im[None]  # expand for batch dim
+        t2 = time_sync()
+        dt[0] += t2 - t1
+
+        # 推理
+        pred = self.model(im, augment=self.augment, visualize=self.visualize)
+        t3 = time_sync()
+        dt[1] += t3 - t2
+
+        # NMS
+        pred = non_max_suppression(pred, self.conf_thres, self.iou_thres, self.classes, self.agnostic_nms,
+                                   max_det=self.max_det)
+        dt[2] += time_sync() - t3
+
+        # 二级分类器（可选）
+        # pred = utils.general.apply_classifier(pred, classifier_model, im, im0s)
+
+        # 过程预测
+        for i, det in enumerate(pred):  # per image
+            self.seen += 1
+            self.im_result = im0s.copy()
+            s += '%gx%g ' % im.shape[2:]  # print string
+            imc = self.im_result.copy() if self.save_crop else self.im_result  # for save_crop
+            annotator = Annotator(self.im_result, line_width=self.line_thickness, example=str(self.names))
+            if len(det):
+                # 将框从 img_size 重新缩放为 im0 大小
+                det[:, :4] = scale_coords(im.shape[2:], det[:, :4], self.im_result.shape).round()
+
+                # Print results
+                for c in det[:, -1].unique():
+                    n = (det[:, -1] == c).sum()  # detections per class
+                    s += f"{n} {self.names[int(c)]}{'s' * (n > 1)}, "  # add to string
+
+                # 将结果保存至本地
+                for *xyxy, conf, cls in reversed(det):
+                    if self.save_img or self.save_crop or self.view_img:  # Add bbox to image
+                        c = int(cls)  # integer class
+                        label = None if self.hide_labels else (
+                            self.names[c] if self.hide_conf else f'{self.names[c]} {conf:.2f}')
+                        annotator.box_label(xyxy, label, color=colors(c, True))
+                        if self.save_crop:
+                            save_one_box(xyxy, imc, BGR=True)
+
+            # 串流结果
+            self.im_result = annotator.result()
+            self.showResult()
+
+        # Print time (inference-only)
+        LOGGER.info(f'{s}Done. ({t3 - t2:.3f}s)')
+
+    @torch.no_grad()
+    def pre_detect(self):
         self.source = str(self.source)
         save_img = not self.nosave and not self.source.endswith('.txt')  # save inference images
         is_file = Path(self.source).suffix[1:] in (IMG_FORMATS + VID_FORMATS)
@@ -107,110 +166,24 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
         # Dataloader
         if webcam:
             cudnn.benchmark = True  # 设置 True 以加速恒定图像尺寸推断
-            # TODO: 摄像头集成在此，有无法关闭的BUG，需要手动实现摄像头帧的捕捉和预测
-            dataset = LoadStreams(self.source, img_size=self.imgsz, stride=self.stride, auto=self.pt)
+            dataset = LoadStreams(self.source, img_size=self.img_sz, stride=self.stride, auto=self.pt)
             bs = len(dataset)  # batch_size
         else:
-            dataset = LoadImages(self.source, img_size=self.imgsz, stride=self.stride, auto=self.pt)
+            dataset = LoadImages(self.source, img_size=self.img_sz, stride=self.stride, auto=self.pt)
             bs = 1  # batch_size
         # 视频检测
         vid_path, vid_writer = [None] * bs, [None] * bs
 
         # 开始推理
-        self.model.warmup(imgsz=(1 if self.pt else bs, 3, *self.imgsz), half=self.half)  # 热身
-        dt, seen = [0.0, 0.0, 0.0], 0
+        self.model.warmup(imgsz=(1 if self.pt else bs, 3, *self.img_sz), half=self.half)  # 热身
+        dt, self.seen = [0.0, 0.0, 0.0], 0
         for path, im, im0s, vid_cap, s in dataset:
-            t1 = time_sync()
-            im = torch.from_numpy(im).to(self.device)
-            im = im.half() if self.half else im.float()  # uint8 to fp16/32
-            im /= 255  # 0 - 255 to 0.0 - 1.0
-            if len(im.shape) == 3:
-                im = im[None]  # expand for batch dim
-            t2 = time_sync()
-            dt[0] += t2 - t1
-
-            # 推理
-            self.visualize = increment_path(self.save_dir / Path(path).stem, mkdir=True) if self.visualize else False
-            pred = self.model(im, augment=self.augment, visualize=self.visualize)
-            t3 = time_sync()
-            dt[1] += t3 - t2
-
-            # NMS
-            pred = non_max_suppression(pred, self.conf_thres, self.iou_thres, self.classes, self.agnostic_nms,
-                                       max_det=self.max_det)
-            dt[2] += time_sync() - t3
-
-            # 二级分类器（可选）
-            # pred = utils.general.apply_classifier(pred, classifier_model, im, im0s)
-
-            # 过程预测
-            for i, det in enumerate(pred):  # per image
-                seen += 1
-                if webcam:  # batch_size >= 1
-                    p, self.im0, frame = path[i], im0s[i].copy(), dataset.count
-                    s += f'{i}: '
-                else:
-                    p, self.im0, frame = path, im0s.copy(), getattr(dataset, 'frame', 0)
-
-                p = Path(p)  # to Path
-                save_path = str(self.save_dir / p.name)  # im.jpg
-                s += '%gx%g ' % im.shape[2:]  # print string
-                imc = self.im0.copy() if self.save_crop else self.im0  # for save_crop
-                annotator = Annotator(self.im0, line_width=self.line_thickness, example=str(self.names))
-                if len(det):
-                    # 将框从 img_size 重新缩放为 im0 大小
-                    det[:, :4] = scale_coords(im.shape[2:], det[:, :4], self.im0.shape).round()
-
-                    # Print results
-                    for c in det[:, -1].unique():
-                        n = (det[:, -1] == c).sum()  # detections per class
-                        s += f"{n} {self.names[int(c)]}{'s' * (n > 1)}, "  # add to string
-
-                    # 将结果保存至本地
-                    for *xyxy, conf, cls in reversed(det):
-                        if self.save_img or self.save_crop or self.view_img:  # Add bbox to image
-                            c = int(cls)  # integer class
-                            label = None if self.hide_labels else (
-                                self.names[c] if self.hide_conf else f'{self.names[c]} {conf:.2f}')
-                            annotator.box_label(xyxy, label, color=colors(c, True))
-                            if self.save_crop:
-                                save_one_box(xyxy, imc, file=self.save_dir / 'crops' / self.names[c] / f'{p.stem}.jpg',
-                                             BGR=True)
-
-                # 串流结果
-                self.im0 = annotator.result()
-                self.showResult()
-                if self.view_img:
-                    cv2.imshow(str(p), self.im0)
-                    cv2.waitKey(1)  # 1 millisecond
-                # 
-                # # 保存检测结果
-                # if self.save_img:
-                #     if dataset.mode == 'image':
-                #         cv2.imwrite(save_path, self.im0)
-                #     else:  # 'video' or 'stream'
-                #         if vid_path[i] != save_path:  # new video
-                #             vid_path[i] = save_path
-                #             if isinstance(vid_writer[i], cv2.VideoWriter):
-                #                 vid_writer[i].release()  # release previous video writer
-                #             if vid_cap:  # video
-                #                 fps = vid_cap.get(cv2.CAP_PROP_FPS)
-                #                 w = int(vid_cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-                #                 h = int(vid_cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-                #             else:  # stream
-                #                 fps, w, h = 30, self.im0.shape[1], self.im0.shape[0]
-                #             save_path = str(
-                #                 Path(save_path).with_suffix('.mp4'))  # force *.mp4 suffix on results videos
-                #             vid_writer[i] = cv2.VideoWriter(save_path, cv2.VideoWriter_fourcc(*'mp4v'), fps, (w, h))
-                #         vid_writer[i].write(self.im0)
-
-            # Print time (inference-only)
-            LOGGER.info(f'{s}Done. ({t3 - t2:.3f}s)')
+            self.detect(im, im0s)
 
         # Print results
-        t = tuple(x / seen * 1E3 for x in dt)  # speeds per image
+        t = tuple(x / self.seen * 1E3 for x in dt)  # speeds per image
         LOGGER.info(
-            f'Speed: %.1fms pre-process, %.1fms inference, %.1fms NMS per image at shape {(1, 3, *self.imgsz)}' % t)
+            f'Speed: %.1fms pre-process, %.1fms inference, %.1fms NMS per image at shape {(1, 3, *self.img_sz)}' % t)
         if self.save_txt or save_img:
             s = f"\n{len(list(self.save_dir.glob('labels/*.txt')))} labels saved to {self.save_dir / 'labels'}" if self.save_txt else ''
             LOGGER.info(f"Results saved to {colorstr('bold', self.save_dir)}{s}")
@@ -218,7 +191,7 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
             strip_optimizer(self.weights)  # update model (to fix SourceChangeWarning)
 
     def showResult(self):
-        result = cv2.cvtColor(self.im0, cv2.COLOR_BGR2BGRA)
+        result = cv2.cvtColor(self.im_result, cv2.COLOR_BGR2BGRA)
         result = cv2.resize(
             result, (640, 480), interpolation=cv2.INTER_AREA)
 
@@ -340,7 +313,7 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
             return
         print(f'已选择图片{img_name}...')
         self.source = img_name
-        self.detect()
+        self.pre_detect()
         self.showResult()
 
     def button_video_open(self):
@@ -396,10 +369,9 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
     def show_video_frame(self):
         _, img = self.cap.read()
         if img is not None:
-            # TODO: 手动捕获帧再读取的方式虽然可以有效关闭摄像头，但是帧率可怜
             # 数据处理
-            self.im0 = img.copy()
-            img = [letterbox(img, self.imgsz, stride=self.stride)[0]]
+            self.im_result = img.copy()
+            img = [letterbox(img, self.img_sz, stride=self.stride)[0]]
             img = np.stack(img, 0)
 
             # 转换
@@ -407,41 +379,7 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
             img = np.ascontiguousarray(img)
 
             # 开始推理
-            img = torch.from_numpy(img).to(self.device)
-            img = img.half() if self.half else img.float()  # uint8 to fp16/32
-            img /= 255  # 0 - 255 to 0.0 - 1.0 色值转换
-            if len(img.shape) == 3:
-                img = img[None]  # expand for batch dim
-            pred = self.model(img, augment=self.augment, visualize=self.visualize)
-            pred = non_max_suppression(pred, self.conf_thres, self.iou_thres, self.classes, self.agnostic_nms,
-                                       max_det=self.max_det)
-            s = ''
-
-            # 第二阶段分类器（可选）
-            # pred = utils.general.apply_classifier(pred, classifier_model, im, im0s)
-
-            for i, det in enumerate(pred):
-                annotator = Annotator(self.im0, line_width=self.line_thickness, example=str(self.names))
-                if len(det):
-                    det[:, :4] = scale_coords(img.shape[2:], det[:, :4], self.im0.shape).round()
-
-                    # 输出结果
-                    for c in det[:, -1].unique():
-                        n = (det[:, -1] == c).sum()  # detections per class
-                        s += f"{n} {self.names[int(c)]}{'s' * (n > 1)}, "  # 结果保存到字符串
-
-                    for *xyxy, conf, cls in reversed(det):
-                        c = int(cls)  # integer class
-                        label = None if self.hide_labels else (
-                            self.names[c] if self.hide_conf else f'{self.names[c]} {conf:.2f}')
-                        annotator.box_label(xyxy, label, color=colors(c, True))
-                    
-                self.im0 = annotator.result()
-                self.showResult()
-
-            # cv2.imwrite('./tmp/tmp.jpg', img)
-            # self.source = './tmp/tmp.jpg'
-            # self.detect()
+            self.detect(img, self.im_result)
         else:
             print('尝试关闭摄像头')
             self.shutdown_camera()

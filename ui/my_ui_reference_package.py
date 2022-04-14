@@ -19,16 +19,16 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 from models.common import DetectMultiBackend
 from utils.augmentations import letterbox
 from utils.datasets import LoadImages, LoadStreams, IMG_FORMATS, VID_FORMATS
-from utils.general import LOGGER, check_img_size, non_max_suppression, scale_coords, increment_path, check_file, \
-    strip_optimizer, colorstr
+from utils.general import LOGGER, check_img_size, non_max_suppression, scale_coords, increment_path, strip_optimizer, \
+    colorstr
 from utils.plots import save_one_box, Annotator, colors
 from utils.torch_utils import select_device, time_sync
 
 FILE = Path(__file__).resolve()
 ROOT = FILE.parents[0]
 if str(ROOT) not in sys.path:
-    sys.path.append(str(ROOT))  # add ROOT to PATH
-ROOT = Path(os.path.relpath(ROOT, Path.cwd()))  # relative
+    sys.path.append(str(ROOT))  # 将工作目录添加至path
+ROOT = Path(os.path.relpath(ROOT, Path.cwd()))  # 相对路径
 
 
 class Ui_MainWindow(QtWidgets.QMainWindow):
@@ -70,8 +70,7 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
         self.dnn = False  # 使用 OpenCV DNN 进行 ONNX 推理
         self.project = ROOT / 'tmp'  # 运行的目录
         self.save_dir = increment_path(Path(self.project) / self.name, exist_ok=self.exist_ok)  # 保存的文件夹
-        self.seen = 0
-
+        self.dt, self.seen = [0.0, 0.0, 0.0], 0
         self.device = select_device(self.device)
         self.save_img = not self.nosave and not self.source.endswith('.txt')  # 保存推理图像
         cudnn.benchmark = True
@@ -96,8 +95,7 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
 
     @torch.no_grad()
     def detect(self, im, im0s):
-        is_file = Path(self.source).suffix[1:] in (IMG_FORMATS + VID_FORMATS)
-        dt, seen, s = [0.0, 0.0, 0.0], 0, ''
+        s = ''
         t1 = time_sync()
         im = torch.from_numpy(im).to(self.device)
         im = im.half() if self.half else im.float()  # uint8 to fp16/32
@@ -105,17 +103,17 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
         if len(im.shape) == 3:
             im = im[None]  # expand for batch dim
         t2 = time_sync()
-        dt[0] += t2 - t1
+        self.dt[0] += t2 - t1
 
         # 推理
         pred = self.model(im, augment=self.augment, visualize=self.visualize)
         t3 = time_sync()
-        dt[1] += t3 - t2
+        self.dt[1] += t3 - t2
 
         # NMS
         pred = non_max_suppression(pred, self.conf_thres, self.iou_thres, self.classes, self.agnostic_nms,
                                    max_det=self.max_det)
-        dt[2] += time_sync() - t3
+        self.dt[2] += time_sync() - t3
 
         # 二级分类器（可选）
         # pred = utils.general.apply_classifier(pred, classifier_model, im, im0s)
@@ -158,12 +156,9 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
         self.source = str(self.source)
         save_img = not self.nosave and not self.source.endswith('.txt')  # save inference images
         is_file = Path(self.source).suffix[1:] in (IMG_FORMATS + VID_FORMATS)
-        is_url = self.source.lower().startswith(('rtsp://', 'rtmp://', 'http://', 'https://'))
-        webcam = self.source.isnumeric() or self.source.endswith('.txt') or (is_url and not is_file)
-        if is_url and is_file:
-            self.source = check_file(self.source)  # download
+        webcam = self.source.isnumeric() or self.source.endswith('.txt') or (not is_file)
 
-        # Dataloader
+        # 加载数据
         if webcam:
             cudnn.benchmark = True  # 设置 True 以加速恒定图像尺寸推断
             dataset = LoadStreams(self.source, img_size=self.img_sz, stride=self.stride, auto=self.pt)
@@ -171,17 +166,15 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
         else:
             dataset = LoadImages(self.source, img_size=self.img_sz, stride=self.stride, auto=self.pt)
             bs = 1  # batch_size
-        # 视频检测
-        vid_path, vid_writer = [None] * bs, [None] * bs
 
         # 开始推理
         self.model.warmup(imgsz=(1 if self.pt else bs, 3, *self.img_sz), half=self.half)  # 热身
-        dt, self.seen = [0.0, 0.0, 0.0], 0
+        self.dt, self.seen = [0.0, 0.0, 0.0], 0
         for path, im, im0s, vid_cap, s in dataset:
             self.detect(im, im0s)
 
         # Print results
-        t = tuple(x / self.seen * 1E3 for x in dt)  # speeds per image
+        t = tuple(x / self.seen * 1E3 for x in self.dt)  # speeds per image
         LOGGER.info(
             f'Speed: %.1fms pre-process, %.1fms inference, %.1fms NMS per image at shape {(1, 3, *self.img_sz)}' % t)
         if self.save_txt or save_img:
@@ -354,9 +347,9 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
                 self.pushButton_camera.setText(u"关闭摄像头")
 
         else:
-            self.shutdown_camera()
+            self.shutdown_stream()
 
-    def shutdown_camera(self):
+    def shutdown_stream(self):
         self.timer_video.stop()
         self.cap.release()
         self.out.release()
@@ -382,7 +375,7 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
             # 推理
             self.detect(img, self.im_result)
         else:
-            self.shutdown_camera()
+            self.shutdown_stream()
 
 
 if __name__ == '__main__':

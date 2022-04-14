@@ -136,8 +136,8 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
 
                 # Print results
                 for c in det[:, -1].unique():
-                    n = (det[:, -1] == c).sum()  # detections per class
-                    s += f"{n} {self.names[int(c)]}{'s' * (n > 1)}, "  # add to string
+                    n = (det[:, -1] == c).sum()  # 每个类别的数量
+                    s += f"{self.names[int(c)]} --- {n}, "  # 添加到结果字符串
 
                 # 将结果保存至本地
                 for *xyxy, conf, cls in reversed(det):

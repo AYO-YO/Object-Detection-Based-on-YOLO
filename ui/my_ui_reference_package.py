@@ -14,6 +14,7 @@ import cv2
 import numpy as np
 import torch
 import torch.backends.cudnn as cudnn
+import yaml
 from PyQt5 import QtCore, QtGui, QtWidgets
 
 from models.common import DetectMultiBackend
@@ -77,8 +78,13 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
 
         # 加载模型
         # TODO: 加入手动选择模型后应将此处的加载模型改为手动选择的路径
+        print(self.data)
+        with open(self.data, encoding='utf-8') as f:
+            print(yaml.safe_load(f)['names'])
         self.model = DetectMultiBackend(self.weights, device=self.device, dnn=self.dnn, data=self.data)
-        self.stride, self.names, self.pt, self.jit, self.onnx, self.engine = self.model.stride, self.model.names, self.model.pt, self.model.jit, self.model.onnx, self.model.engine
+        self.stride, self.pt, self.jit, self.onnx, self.engine = self.model.stride, self.model.pt, self.model.jit, self.model.onnx, self.model.engine
+        with open(self.data, encoding='utf-8') as f:
+            self.names = (yaml.safe_load(f)['names'])
         self.img_sz = check_img_size(self.img_sz, s=self.stride)  # 检查 img_size
         # 仅在 CUDA 上支持半精度
         self.half &= (self.pt or self.jit or self.onnx or self.engine) and self.device.type != 'cpu'
@@ -89,8 +95,7 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
                 '需要' if self.model.trt_fp16_input else '不兼容') + ' --half. 自动调整.')
             self.half = self.model.trt_fp16_input
 
-        # 获取名称和颜色
-        self.names = self.model.module.names if hasattr(self.model, 'module') else self.model.names
+        # 随机取名称对应的颜色
         self.colors = [[random.randint(125, 255) for _ in range(3)] for _ in self.names]
 
     @torch.no_grad()
@@ -298,7 +303,7 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
         self.label.setPixmap(pix)
 
     def button_image_open(self):
-        print('button_image_open')
+        print('打开图片...')
 
         img_name, _ = QtWidgets.QFileDialog.getOpenFileName(
             self, "打开图片", "", "*.jpg;;*.png;;All Files(*)")

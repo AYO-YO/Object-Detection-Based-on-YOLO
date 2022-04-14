@@ -298,7 +298,7 @@ class DetectMultiBackend(nn.Module):
         stride, names = 64, [f'class{i}' for i in range(1000)]  # assign defaults
         w = attempt_download(w)  # download if not local
         if data:  # data.yaml path (optional)
-            with open(data, errors='ignore') as f:
+            with open(data, errors='ignore', encoding='utf-8') as f:
                 names = yaml.safe_load(f)['names']  # class names
 
         if pt:  # PyTorch

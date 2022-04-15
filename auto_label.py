@@ -2,12 +2,9 @@
 @author: 赵春旭
 @version: 1.0.0
 """
-import os
 from tkinter import *
 from tkinter import filedialog
 from xml.etree import ElementTree as ET
-
-import torch
 
 from models.common import DetectMultiBackend
 from utils.datasets import *

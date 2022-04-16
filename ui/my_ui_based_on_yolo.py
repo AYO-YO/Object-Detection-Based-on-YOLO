@@ -198,8 +198,8 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
         self.label.setPixmap(QtGui.QPixmap.fromImage(self.QtImg))
 
     def setupUi(self, MainWindow):
-        MainWindow.setObjectName("识别系统")
-        MainWindow.resize(800, 600)
+        MainWindow.setObjectName("基于YOLO的移动物体检测分类系统")
+        MainWindow.resize(1200, 800)
         self.centralwidget = QtWidgets.QWidget(MainWindow)
         self.centralwidget.setObjectName("centralwidget")
         self.horizontalLayout_2 = QtWidgets.QHBoxLayout(self.centralwidget)
@@ -212,68 +212,67 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
         self.verticalLayout.setContentsMargins(-1, -1, 0, -1)
         self.verticalLayout.setSpacing(80)
         self.verticalLayout.setObjectName("verticalLayout")
-        self.pushButton_img = QtWidgets.QPushButton(self.centralwidget)
+        self.btn_img = QtWidgets.QPushButton(self.centralwidget)
         sizePolicy = QtWidgets.QSizePolicy(
             QtWidgets.QSizePolicy.Minimum, QtWidgets.QSizePolicy.MinimumExpanding)
         sizePolicy.setHorizontalStretch(0)
         sizePolicy.setVerticalStretch(0)
         sizePolicy.setHeightForWidth(
-            self.pushButton_img.sizePolicy().hasHeightForWidth())
-        self.pushButton_img.setSizePolicy(sizePolicy)
-        self.pushButton_img.setMinimumSize(QtCore.QSize(150, 100))
-        self.pushButton_img.setMaximumSize(QtCore.QSize(150, 100))
+            self.btn_img.sizePolicy().hasHeightForWidth())
+        self.btn_img.setSizePolicy(sizePolicy)
+        self.btn_img.setMinimumSize(QtCore.QSize(150, 100))
+        self.btn_img.setMaximumSize(QtCore.QSize(150, 100))
         font = QtGui.QFont()
         font.setFamily("Agency FB")
         font.setPointSize(12)
-        self.pushButton_img.setFont(font)
-        self.pushButton_img.setObjectName("pushButton_img")
+        self.btn_img.setFont(font)
+        self.btn_img.setObjectName("pushButton_img")
         self.verticalLayout.addWidget(
-            self.pushButton_img, 0, QtCore.Qt.AlignHCenter)
-        self.pushButton_camera = QtWidgets.QPushButton(self.centralwidget)
+            self.btn_img, 0, QtCore.Qt.AlignHCenter)
+        self.btn_camera = QtWidgets.QPushButton(self.centralwidget)
         sizePolicy = QtWidgets.QSizePolicy(
             QtWidgets.QSizePolicy.Minimum, QtWidgets.QSizePolicy.Expanding)
         sizePolicy.setHorizontalStretch(0)
         sizePolicy.setVerticalStretch(0)
         sizePolicy.setHeightForWidth(
-            self.pushButton_camera.sizePolicy().hasHeightForWidth())
-        self.pushButton_camera.setSizePolicy(sizePolicy)
-        self.pushButton_camera.setMinimumSize(QtCore.QSize(150, 100))
-        self.pushButton_camera.setMaximumSize(QtCore.QSize(150, 100))
+            self.btn_camera.sizePolicy().hasHeightForWidth())
+        self.btn_camera.setSizePolicy(sizePolicy)
+        self.btn_camera.setMinimumSize(QtCore.QSize(180, 100))
+        self.btn_camera.setMaximumSize(QtCore.QSize(180, 100))
         font = QtGui.QFont()
         font.setFamily("Agency FB")
         font.setPointSize(12)
-        self.pushButton_camera.setFont(font)
-        self.pushButton_camera.setObjectName("pushButton_camera")
+        self.btn_camera.setFont(font)
+        self.btn_camera.setObjectName("pushButton_camera")
         self.verticalLayout.addWidget(
-            self.pushButton_camera, 0, QtCore.Qt.AlignHCenter)
-        self.pushButton_video = QtWidgets.QPushButton(self.centralwidget)
+            self.btn_camera, 0, QtCore.Qt.AlignHCenter)
+        self.btn_video = QtWidgets.QPushButton(self.centralwidget)
         sizePolicy = QtWidgets.QSizePolicy(
             QtWidgets.QSizePolicy.Minimum, QtWidgets.QSizePolicy.Expanding)
         sizePolicy.setHorizontalStretch(0)
         sizePolicy.setVerticalStretch(0)
         sizePolicy.setHeightForWidth(
-            self.pushButton_video.sizePolicy().hasHeightForWidth())
-        self.pushButton_video.setSizePolicy(sizePolicy)
-        self.pushButton_video.setMinimumSize(QtCore.QSize(150, 100))
-        self.pushButton_video.setMaximumSize(QtCore.QSize(150, 100))
+            self.btn_video.sizePolicy().hasHeightForWidth())
+        self.btn_video.setSizePolicy(sizePolicy)
+        self.btn_video.setMinimumSize(QtCore.QSize(180, 100))
+        self.btn_video.setMaximumSize(QtCore.QSize(180, 100))
         font = QtGui.QFont()
         font.setFamily("Agency FB")
         font.setPointSize(12)
-        self.pushButton_video.setFont(font)
-        self.pushButton_video.setObjectName("pushButton_video")
+        self.btn_video.setFont(font)
+        self.btn_video.setObjectName("pushButton_video")
         self.verticalLayout.addWidget(
-            self.pushButton_video, 0, QtCore.Qt.AlignHCenter)
+            self.btn_video, 0, QtCore.Qt.AlignHCenter)
         self.verticalLayout.setStretch(2, 1)
         self.horizontalLayout.addLayout(self.verticalLayout)
         self.label = QtWidgets.QLabel(self.centralwidget)
         self.label.setObjectName("label")
         self.horizontalLayout.addWidget(self.label)
-        self.horizontalLayout.setStretch(0, 1)
-        self.horizontalLayout.setStretch(1, 3)
+        self.horizontalLayout.setStretch(1, 5)
         self.horizontalLayout_2.addLayout(self.horizontalLayout)
         MainWindow.setCentralWidget(self.centralwidget)
         self.menubar = QtWidgets.QMenuBar(MainWindow)
-        self.menubar.setGeometry(QtCore.QRect(0, 0, 800, 23))
+        self.menubar.setGeometry(QtCore.QRect(0, 0, 1200, 23))
         self.menubar.setObjectName("menubar")
         MainWindow.setMenuBar(self.menubar)
         self.statusbar = QtWidgets.QStatusBar(MainWindow)
@@ -285,20 +284,20 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
 
     def retranslateUi(self, MainWindow):
         _translate = QtCore.QCoreApplication.translate
-        MainWindow.setWindowTitle(_translate("MainWindow", "PyQt5+YOLOv5示例"))
-        self.pushButton_img.setText(_translate("MainWindow", "图片检测"))
-        self.pushButton_camera.setText(_translate("MainWindow", "摄像头检测"))
-        self.pushButton_video.setText(_translate("MainWindow", "视频检测"))
+        MainWindow.setWindowTitle(_translate("MainWindow", "基于YOLO的移动物体检测分类系统"))
+        self.btn_img.setText(_translate("MainWindow", "图片检测"))
+        self.btn_camera.setText(_translate("MainWindow", "摄像头检测"))
+        self.btn_video.setText(_translate("MainWindow", "视频检测"))
         self.label.setText(_translate("MainWindow", "TextLabel"))
 
     def init_slots(self):
-        self.pushButton_img.clicked.connect(self.button_image_open)
-        self.pushButton_video.clicked.connect(self.button_video_open)
-        self.pushButton_camera.clicked.connect(self.button_camera_open)
+        self.btn_img.clicked.connect(self.button_image_open)
+        self.btn_video.clicked.connect(self.button_video_open)
+        self.btn_camera.clicked.connect(self.button_camera_open)
         self.timer_video.timeout.connect(self.show_video_frame)
 
     def init_logo(self):
-        pix = QtGui.QPixmap('wechat.jpg')
+        pix = QtGui.QPixmap('icon.jpg')
         self.label.setScaledContents(True)
         self.label.setPixmap(pix)
 
@@ -312,14 +311,13 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
         print(f'已选择图片{img_name}...')
         self.source = img_name
         self.pre_detect()
-        self.showResult()
 
     def load_video_stream(self):
         self.out = cv2.VideoWriter('./tmp/video/prediction.avi', cv2.VideoWriter_fourcc(
             *'MJPG'), 20, (int(self.cap.get(3)), int(self.cap.get(4))))
         self.timer_video.start(24)
-        self.pushButton_video.setDisabled(True)
-        self.pushButton_img.setDisabled(True)
+        self.btn_video.setDisabled(True)
+        self.btn_img.setDisabled(True)
 
     def button_video_open(self):
         self.cap = cv2.VideoCapture()
@@ -336,7 +334,7 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
                 defaultButton=QtWidgets.QMessageBox.Ok)
         else:
             self.load_video_stream()
-            self.pushButton_camera.setDisabled(True)
+            self.btn_camera.setDisabled(True)
 
     def button_camera_open(self):
         self.cap = cv2.VideoCapture()
@@ -349,7 +347,7 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
                     defaultButton=QtWidgets.QMessageBox.Ok)
             else:
                 self.load_video_stream()
-                self.pushButton_camera.setText(u"关闭摄像头")
+                self.btn_camera.setText(u"关闭摄像头")
 
         else:
             self.shutdown_stream()
@@ -360,10 +358,10 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
         self.out.release()
         self.label.clear()
         self.init_logo()
-        self.pushButton_video.setDisabled(False)
-        self.pushButton_img.setDisabled(False)
-        self.pushButton_camera.setDisabled(False)
-        self.pushButton_camera.setText(u"摄像头检测")
+        self.btn_video.setDisabled(False)
+        self.btn_img.setDisabled(False)
+        self.btn_camera.setDisabled(False)
+        self.btn_camera.setText(u"摄像头检测")
 
     def show_video_frame(self):
         _, img = self.cap.read()

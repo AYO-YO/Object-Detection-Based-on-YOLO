@@ -305,7 +305,7 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
         print('打开图片...')
 
         img_name, _ = QtWidgets.QFileDialog.getOpenFileName(
-            self, "打开图片", "", "*.jpg;;*.png;;All Files(*)")
+            self, "打开图片", "", "*.jpg;*.png;*.bmp;;All Files(*)")
         if not img_name:
             return
         print(f'已选择图片{img_name}...')
@@ -337,11 +337,18 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
             self.btn_camera.setDisabled(True)
 
     def button_camera_open(self):
-        self.cap = cv2.VideoCapture()
+        use_url = True
+        if use_url:
+            url = 'rtsp://admin:admin@192.168.3.161:8554/live'
+            self.cap = cv2.VideoCapture(url)
+            # while self.cap.isOpened():
+            self.load_video_stream()
+        else:
+            self.cap = cv2.VideoCapture()
         if not self.timer_video.isActive():
+            pass
             # 默认使用第一个本地camera
-            flag = self.cap.open(0)
-            if not flag:
+            if not self.cap.open(0):
                 QtWidgets.QMessageBox.warning(
                     self, u"Warning", u"打开摄像头失败", buttons=QtWidgets.QMessageBox.Ok,
                     defaultButton=QtWidgets.QMessageBox.Ok)

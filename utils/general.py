@@ -791,18 +791,18 @@ def non_max_suppression(prediction, conf_thres=0.25, iou_thres=0.45, classes=Non
 
 
 def strip_optimizer(f='best.pt', s=''):  # from utils.general import *; strip_optimizer()
-    # Strip optimizer from 'f' to finalize training, optionally save as 's'
+    """完成推理后剥离优化器f，可选是否将其保存为s"""
     x = torch.load(f, map_location=torch.device('cpu'))
     if x.get('ema'):
-        x['model'] = x['ema']  # replace model with ema
-    for k in 'optimizer', 'best_fitness', 'wandb_id', 'ema', 'updates':  # keys
+        x['model'] = x['ema']  # 将model替换为ema
+    for k in 'optimizer', 'best_fitness', 'wandb_id', 'ema', 'updates':  # key
         x[k] = None
     x['epoch'] = -1
     x['model'].half()  # to FP16
     for p in x['model'].parameters():
         p.requires_grad = False
     torch.save(x, s or f)
-    mb = os.path.getsize(s or f) / 1E6  # filesize
+    mb = os.path.getsize(s or f) / 1E6  # 文件大小
     LOGGER.info(f"Optimizer stripped from {f},{(' saved as %s,' % s) if s else ''} {mb:.1f}MB")
 
 

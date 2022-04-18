@@ -73,7 +73,7 @@ class MixConv2d(nn.Module):
 
 
 class Ensemble(nn.ModuleList):
-    # Ensemble of models
+    # 模型集合
     def __init__(self):
         super().__init__()
 
@@ -81,16 +81,14 @@ class Ensemble(nn.ModuleList):
         y = []
         for module in self:
             y.append(module(x, augment, profile, visualize)[0])
-        # y = torch.stack(y).max(0)[0]  # max ensemble
-        # y = torch.stack(y).mean(0)  # mean ensemble
-        y = torch.cat(y, 1)  # nms ensemble
-        return y, None  # inference, train output
+        y = torch.cat(y, 1)  # nms 集合
+        return y, None  # 推理, 训练输出
 
 
 def attempt_load(weights, map_location=None, inplace=True, fuse=True):
     from models.yolo import Detect, Model
 
-    # Loads an ensemble of models weights=[a,b,c] or a single model weights=[a] or weights=a
+    # 加载模型权重[a，b，c] 或单个模型权重[a] 或权重a
     model = Ensemble()
     for w in weights if isinstance(weights, list) else [weights]:
         ckpt = torch.load(attempt_download(w), map_location=map_location)  # load

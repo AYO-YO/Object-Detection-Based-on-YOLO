@@ -69,41 +69,41 @@ class Annotator:
     if RANK in (-1, 0):
         check_font()  # download TTF if necessary
 
-    # YOLOv5 Annotator for train/val mosaics and jpgs and detect/hub inference annotations
-    def __init__(self, im, line_width=None, font_size=None, font='Arial.ttf', pil=False, example='abc'):
-        assert im.data.contiguous, 'Image not contiguous. Apply np.ascontiguousarray(im) to Annotator() input images.'
+    # YOLOv5 Annotator for train/val mosaics and jpgs and detect/hub 推理结果标注
+    def __init__(self, im, line_width=None, font_size=None, font='Arial.ttf', pil=False, example='abc汉字'):
+        assert im.data.contiguous, '图像不连续。 将np.ascontiguvingArray（IM）应用于Annotator（）输入图像。'
         self.pil = pil or not is_ascii(example) or is_chinese(example)
+        # 使用支持中文的PIL进行绘制
         if self.pil:  # use PIL
             self.im = im if isinstance(im, Image.Image) else Image.fromarray(im)
             self.draw = ImageDraw.Draw(self.im)
             self.font = check_font(font='Arial.Unicode.ttf' if is_chinese(example) else font,
                                    size=font_size or max(round(sum(self.im.size) / 2 * 0.035), 12))
-        else:  # use cv2
+        else:  # 使用 cv2 获得更好的性能
             self.im = im
-        self.lw = line_width or max(round(sum(im.shape) / 2 * 0.003), 2)  # line width
+        self.lw = line_width or max(round(sum(im.shape) / 2 * 0.003), 2)  # 列宽
 
     def box_label(self, box, label='', color=(128, 128, 128), txt_color=(255, 255, 255)):
-        # Add one xyxy box to image with label
+        # 根据xyxy坐标格式为图像绘制带有标签的的结果框
         if self.pil or not is_ascii(label):
-            self.draw.rectangle(box, width=self.lw, outline=color)  # box
+            self.draw.rectangle(box, width=self.lw, outline=color)  # 画框
             if label:
-                w, h = self.font.getsize(label)  # text width, height
-                outside = box[1] - h >= 0  # label fits outside box
+                w, h = self.font.getsize(label)  # 文本宽度和高度
+                outside = box[1] - h >= 0  # 标签的显示位置是否位于标注框的外部
                 self.draw.rectangle([box[0],
                                      box[1] - h if outside else box[1],
                                      box[0] + w + 1,
                                      box[1] + 1 if outside else box[1] + h + 1], fill=color)
-                # self.draw.text((box[0], box[1]), label, fill=txt_color, font=self.font, anchor='ls')  # for PIL>8.0
                 self.draw.text((box[0], box[1] - h if outside else box[1]), label, fill=txt_color, font=self.font)
         else:  # cv2
             p1, p2 = (int(box[0]), int(box[1])), (int(box[2]), int(box[3]))
             cv2.rectangle(self.im, p1, p2, color, thickness=self.lw, lineType=cv2.LINE_AA)
             if label:
-                tf = max(self.lw - 1, 1)  # font thickness
-                w, h = cv2.getTextSize(label, 0, fontScale=self.lw / 3, thickness=tf)[0]  # text width, height
-                outside = p1[1] - h - 3 >= 0  # label fits outside box
+                tf = max(self.lw - 1, 1)  # 字体粗细
+                w, h = cv2.getTextSize(label, 0, fontScale=self.lw / 3, thickness=tf)[0]  # 文本宽度和高度
+                outside = p1[1] - h - 3 >= 0  # 标签的显示位置是否位于标注框的外部
                 p2 = p1[0] + w, p1[1] - h - 3 if outside else p1[1] + h + 3
-                cv2.rectangle(self.im, p1, p2, color, -1, cv2.LINE_AA)  # filled
+                cv2.rectangle(self.im, p1, p2, color, -1, cv2.LINE_AA)  # 填充颜色
                 cv2.putText(self.im, label, (p1[0], p1[1] - 2 if outside else p1[1] + h + 2), 0, self.lw / 3, txt_color,
                             thickness=tf, lineType=cv2.LINE_AA)
 

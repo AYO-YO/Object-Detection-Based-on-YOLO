@@ -276,7 +276,10 @@ class Concat(nn.Module):
 
 
 class DetectMultiBackend(nn.Module):
-    # YOLOv5 MultiBackend class for python inference on various backends
+    """
+    推理类，用于Python推理后端
+    """
+
     def __init__(self, weights='yolov5s.pt', device=None, dnn=False, data=None):
         # Usage:
         #   PyTorch:              weights = *.pt
@@ -294,18 +297,18 @@ class DetectMultiBackend(nn.Module):
 
         super().__init__()
         w = str(weights[0] if isinstance(weights, list) else weights)
-        pt, jit, onnx, xml, engine, coreml, saved_model, pb, tflite, edgetpu, tfjs = self.model_type(w)  # get backend
-        stride, names = 64, [f'class{i}' for i in range(1000)]  # assign defaults
-        w = attempt_download(w)  # download if not local
+        pt, jit, onnx, xml, engine, coreml, saved_model, pb, tflite, edgetpu, tfjs = self.model_type(w)  # 得到后端
+        stride, names = 64, [f'class{i}' for i in range(1000)]  # 分配默认值
+        w = attempt_download(w)  # 如果本地找不到该模型则尝试下载
         if data:  # data.yaml path (optional)
             with open(data, errors='ignore', encoding='utf-8') as f:
-                names = yaml.safe_load(f)['names']  # class names
+                names = yaml.safe_load(f)['names']  # 分类名称
 
         if pt:  # PyTorch
             model = attempt_load(weights if isinstance(weights, list) else w, map_location=device)
-            stride = max(int(model.stride.max()), 32)  # model stride
-            names = model.module.names if hasattr(model, 'module') else model.names  # get class names
-            self.model = model  # explicitly assign for to(), cpu(), cuda(), half()
+            stride = max(int(model.stride.max()), 32)  # 模型优化
+            names = model.module.names if hasattr(model, 'module') else model.names  # 获取分类名称
+            self.model = model  # 显式分配给(), cpu(), cuda(), half()
         elif jit:  # TorchScript
             LOGGER.info(f'Loading {w} for TorchScript inference...')
             extra_files = {'config.txt': ''}  # model metadata
@@ -459,7 +462,7 @@ class DetectMultiBackend(nn.Module):
         return (y, []) if val else y
 
     def warmup(self, imgsz=(1, 3, 640, 640), half=False):
-        # Warmup model by running inference once
+        """运行一次推理，预热模型"""
         if self.pt or self.jit or self.onnx or self.engine:  # warmup types
             if isinstance(self.device, torch.device) and self.device.type != 'cpu':  # only warmup GPU models
                 im = torch.zeros(*imgsz).to(self.device).type(torch.half if half else torch.float)  # input image

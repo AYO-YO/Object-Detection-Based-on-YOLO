@@ -19,7 +19,7 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 
 from models.common import DetectMultiBackend
 from utils.augmentations import letterbox
-from utils.datasets import LoadImages, LoadStreams, IMG_FORMATS, VID_FORMATS
+from utils.datasets import LoadImages
 from utils.general import LOGGER, check_img_size, non_max_suppression, scale_coords, increment_path, strip_optimizer, \
     colorstr
 from utils.plots import save_one_box, Annotator, colors
@@ -106,11 +106,11 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
         im = im.half() if self.half else im.float()  # uint8 to fp16/32
         im /= 255  # 0 - 255 to 0.0 - 1.0
         if len(im.shape) == 3:
-            im = im[None]  # expand for batch dim
+            im = im[None]  # 扩大批量调暗
         t2 = time_sync()
         self.dt[0] += t2 - t1
 
-        # 推理
+        # 前向传播，预推理，拿到推理函数
         pred = self.model(im, augment=self.augment, visualize=self.visualize)
         t3 = time_sync()
         self.dt[1] += t3 - t2
@@ -124,17 +124,18 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
         # pred = utils.general.apply_classifier(pred, classifier_model, im, im0s)
 
         # 过程预测
-        for i, det in enumerate(pred):  # per image
+        for _, det in enumerate(pred):  # 推理图片
             self.seen += 1
             self.im_result = im0s.copy()
-            s += '%gx%g ' % im.shape[2:]  # print string
+            s += '%gx%g ' % im.shape[2:]  # 打印字符串
             imc = self.im_result.copy() if self.save_crop else self.im_result  # for save_crop
+            # 标注器
             annotator = Annotator(self.im_result, line_width=self.line_thickness, example=str(self.names))
             if len(det):
                 # 将框从 img_size 重新缩放为 im0 大小
                 det[:, :4] = scale_coords(im.shape[2:], det[:, :4], self.im_result.shape).round()
 
-                # Print results
+                # 打印结果
                 for c in det[:, -1].unique():
                     n = (det[:, -1] == c).sum()  # 每个类别的数量
                     s += f"{self.names[int(c)]} --- {n}, "  # 添加到结果字符串
@@ -153,40 +154,35 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
             self.im_result = annotator.result()
             self.showResult()
 
-        # Print time (inference-only)
-        LOGGER.info(f'{s}Done. ({t3 - t2:.3f}s)')
+        # 输出推理时间
+        LOGGER.info(f'{s} 推理完成，用时： ({t3 - t2:.3f}s)')
+
+    def after_detect(self):
+        # 输出结果
+        t = tuple(x / self.seen * 1E3 for x in self.dt)  # 图片的速度
+        LOGGER.info(
+            f'大小为{self.img_sz}的图像处理速度: 预处理 --- %.1fms, 推理 --- %.1fms,  NMS --- %.1fms' % t)
+        if self.save_txt or self.save_img:
+            s = f"\n{len(list(self.save_dir.glob('labels/*.txt')))} labels 保存至 {self.save_dir / 'labels'}" if self.save_txt else ''
+            LOGGER.info(f"结果保存至 {colorstr('bold', self.save_dir)}{s}")
+        if self.update:
+            strip_optimizer(self.weights)  # 更新模型（修复 SourceChangeWarning）
 
     @torch.no_grad()
     def pre_detect(self):
         self.source = str(self.source)
-        save_img = not self.nosave and not self.source.endswith('.txt')  # save inference images
-        is_file = Path(self.source).suffix[1:] in (IMG_FORMATS + VID_FORMATS)
-        webcam = self.source.isnumeric() or self.source.endswith('.txt') or (not is_file)
+        self.save_img = not self.nosave and not self.source.endswith('.txt')  # 保存推理图片
 
         # 加载数据
-        if webcam:
-            cudnn.benchmark = True  # 设置 True 以加速恒定图像尺寸推断
-            dataset = LoadStreams(self.source, img_size=self.img_sz, stride=self.stride, auto=self.pt)
-            bs = len(dataset)  # batch_size
-        else:
-            dataset = LoadImages(self.source, img_size=self.img_sz, stride=self.stride, auto=self.pt)
-            bs = 1  # batch_size
+        dataset = LoadImages(self.source, img_size=self.img_sz, stride=self.stride, auto=self.pt)
+        bs = 1  # batch_size
 
         # 开始推理
         self.model.warmup(imgsz=(1 if self.pt else bs, 3, *self.img_sz), half=self.half)  # 热身
-        self.dt, self.seen = [0.0, 0.0, 0.0], 0
         for path, im, im0s, vid_cap, s in dataset:
             self.detect(im, im0s)
 
-        # Print results
-        t = tuple(x / self.seen * 1E3 for x in self.dt)  # speeds per image
-        LOGGER.info(
-            f'Speed: %.1fms pre-process, %.1fms inference, %.1fms NMS per image at shape {(1, 3, *self.img_sz)}' % t)
-        if self.save_txt or save_img:
-            s = f"\n{len(list(self.save_dir.glob('labels/*.txt')))} labels saved to {self.save_dir / 'labels'}" if self.save_txt else ''
-            LOGGER.info(f"Results saved to {colorstr('bold', self.save_dir)}{s}")
-        if self.update:
-            strip_optimizer(self.weights)  # update model (to fix SourceChangeWarning)
+        self.after_detect()
 
     def showResult(self):
         result = cv2.cvtColor(self.im_result, cv2.COLOR_BGR2BGRA)

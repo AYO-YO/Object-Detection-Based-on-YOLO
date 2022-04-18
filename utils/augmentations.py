@@ -89,36 +89,41 @@ def replicate(im, labels):
 
 
 def letterbox(im, new_shape=(640, 640), color=(114, 114, 114), auto=True, scaleFill=False, scaleup=True, stride=32):
+    """
+    图像缩放：保持图片的宽高比例，剩下的部分采用灰色填充
+    """
     # 调整图像大小和填充图像，同时满足约束
+
     shape = im.shape[:2]  # 当前 [height, width]
 
     # 如果仅传入一个参数，则当作正方形处理
     if isinstance(new_shape, int):
         new_shape = (new_shape, new_shape)
 
-    # 比例 (new / old)
+    # 计算缩放因子 (new / old)
     r = min(new_shape[0] / shape[0], new_shape[1] / shape[1])
-    if not scaleup:  # only scale down, do not scale up (for better val mAP)
+    if not scaleup:  # 若没有设置上采样，则只进行下采样，因为上采样图片会让图片模糊，可能会影响训练性能
         r = min(r, 1.0)
 
     # 计算填充
     ratio = r, r  # width, height 比例
-    new_unpad = int(round(shape[1] * r)), int(round(shape[0] * r))
-    dw, dh = new_shape[1] - new_unpad[0], new_shape[0] - new_unpad[1]  # wh padding
-    if auto:  # minimum rectangle
-        dw, dh = np.mod(dw, stride), np.mod(dh, stride)  # wh padding
+    new_unpad = int(round(shape[1] * r)), int(round(shape[0] * r))  # 新的未缩放的填充大小
+    dw, dh = new_shape[1] - new_unpad[0], new_shape[0] - new_unpad[1]  # 缩放到新填充大小需要做的更改
+    if auto:  # 获取最小的矩形填充
+        dw, dh = np.mod(dw, stride), np.mod(dh, stride)
     elif scaleFill:  # stretch
         dw, dh = 0.0, 0.0
         new_unpad = (new_shape[1], new_shape[0])
         ratio = new_shape[1] / shape[1], new_shape[0] / shape[0]  # width, height ratios
 
-    dw /= 2  # 填充一分为二
+    dw /= 2  # 上下各需要填充的值
     dh /= 2
 
-    if shape[::-1] != new_unpad:  # resize
+    if shape[::-1] != new_unpad:  # 重新缩放
         im = cv2.resize(im, new_unpad, interpolation=cv2.INTER_LINEAR)
     top, bottom = int(round(dh - 0.1)), int(round(dh + 0.1))
     left, right = int(round(dw - 0.1)), int(round(dw + 0.1))
+    # 进行填充
     im = cv2.copyMakeBorder(im, top, bottom, left, right, cv2.BORDER_CONSTANT, value=color)  # add border
     return im, ratio, (dw, dh)
 

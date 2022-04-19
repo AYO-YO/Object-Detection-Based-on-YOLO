@@ -27,10 +27,10 @@ tensorflowjs>=3.9.0  # TF.js export
 openvino-dev  # OpenVINO export
 
 # Extras --------------------------------------
-# albumentations>=1.0.3
-# Cython  # for pycocotools https://github.com/cocodataset/cocoapi/issues/172
-# pycocotools>=2.0  # COCO mAP
-# roboflow
+albumentations>=1.0.3
+Cython  # for pycocotools https://github.com/cocodataset/cocoapi/issues/172
+pycocotools>=2.0  # COCO mAP
+roboflow
 thop~=0.0.31-2005241907
 
 yaml~=0.2.5

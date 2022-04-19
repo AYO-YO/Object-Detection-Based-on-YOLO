@@ -8,6 +8,7 @@ import random
 #
 # WARNING! All changes made in this file will be lost!
 import sys
+import time
 from pathlib import Path
 
 import cv2
@@ -333,7 +334,7 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
             self.btn_camera.setDisabled(True)
 
     def button_camera_open(self):
-        use_url = True
+        use_url = False
         if use_url:
             url = 'rtsp://admin:admin@192.168.3.161:8554/live'
             self.cap = cv2.VideoCapture(url)
@@ -367,6 +368,7 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
         self.btn_camera.setText(u"摄像头检测")
 
     def show_video_frame(self):
+        max_frame = 24
         _, img = self.cap.read()
         if img is not None:
             # 数据处理
@@ -378,6 +380,8 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
             img = img[..., ::-1].transpose((0, 3, 1, 2))  # BGR to RGB, BHWC to BCHW
             img = np.ascontiguousarray(img)
 
+            time.sleep(1 / max_frame)
+            
             # 推理
             self.detect(img, self.im_result)
         else:

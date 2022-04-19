@@ -75,6 +75,7 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
         self.dt, self.seen = [0.0, 0.0, 0.0], 0
         self.device = select_device(self.device)
         self.save_img = not self.nosave and not self.source.endswith('.txt')  # 保存推理图像
+        self.last_res = ''  # 上一次推理结果，当视频推理结果未发生变化时，则不打印结果
         cudnn.benchmark = True
 
         # 加载模型
@@ -156,7 +157,9 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
             self.showResult()
 
         # 输出推理时间
-        LOGGER.info(f'{s} 推理完成，用时： ({t3 - t2:.3f}s)')
+        if s != self.last_res:
+            LOGGER.info(f'{s} 推理完成，用时： ({t3 - t2:.3f}s)')
+        self.last_res = s
 
     def after_detect(self):
         # 输出结果
@@ -368,7 +371,7 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
         self.btn_camera.setText(u"摄像头检测")
 
     def show_video_frame(self):
-        max_frame = 24
+        max_frame = 30
         _, img = self.cap.read()
         if img is not None:
             # 数据处理
@@ -381,7 +384,7 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
             img = np.ascontiguousarray(img)
 
             time.sleep(1 / max_frame)
-            
+
             # 推理
             self.detect(img, self.im_result)
         else:

@@ -300,7 +300,7 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
     def load_video_stream(self):
         self.out = cv2.VideoWriter('./tmp/video/prediction.avi', cv2.VideoWriter_fourcc(*'MJPG'), 20,
                                    (int(self.cap.get(3)), int(self.cap.get(4))))
-        self.timer_video.start(24)
+        self.timer_video.start(30)
         self.btn_video.setDisabled(True)
         self.btn_img.setDisabled(True)
 

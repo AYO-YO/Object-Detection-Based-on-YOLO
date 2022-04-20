@@ -1,6 +1,7 @@
 """
 @author: 赵春旭
 @version: 1.0.0
+自动打标签
 """
 from tkinter import *
 from tkinter import filedialog

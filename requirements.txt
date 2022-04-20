@@ -18,13 +18,7 @@ pandas>=1.1.4
 seaborn>=0.11.0
 
 # Export --------------------------------------
-coremltools>=4.1  # CoreML export
-onnx>=1.9.0  # ONNX export
-onnx-simplifier>=0.3.6  # ONNX simplifier
-scikit-learn==1.0.2  # CoreML quantization
-tensorflow>=2.4.1  # TFLite export
-tensorflowjs>=3.9.0  # TF.js export
-openvino-dev  # OpenVINO export
+tensorflow~=2.3.0
 
 # Extras --------------------------------------
 albumentations>=1.0.3
@@ -34,6 +28,8 @@ roboflow
 thop~=0.0.31-2005241907
 
 yaml~=0.2.5
-flask~=2.1.1
-tensorflow~=2.8.0
+flask~=2.0.3
 future~=0.18.2
+
+# GUI ----------------------------------------
+PyQT

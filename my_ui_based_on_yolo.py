@@ -290,6 +290,9 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
         self.label.setScaledContents(True)
         self.label.setPixmap(pix)
 
+    def btn_image_guide(self):
+        pass
+
     def button_image_open(self):
         print('打开图片...')
 

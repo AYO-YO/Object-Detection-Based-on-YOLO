@@ -16,6 +16,7 @@ import numpy as np
 import torch
 import torch.backends.cudnn as cudnn
 import yaml
+from PyCameraList.camera_device import list_video_devices
 from PyQt5 import QtCore, QtGui, QtWidgets
 
 from models.common import DetectMultiBackend
@@ -280,9 +281,9 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
         self.label.setText(_translate("MainWindow", "TextLabel"))
 
     def init_slots(self):
-        self.btn_img.clicked.connect(self.button_image_open)
-        self.btn_video.clicked.connect(self.button_video_open)
-        self.btn_camera.clicked.connect(self.button_camera_open)
+        self.btn_img.clicked.connect(self.image_guide)
+        self.btn_video.clicked.connect(self.video_guide)
+        self.btn_camera.clicked.connect(self.camera_guide)
         self.timer_video.timeout.connect(self.show_video_frame)
 
     def init_logo(self):
@@ -290,8 +291,25 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
         self.label.setScaledContents(True)
         self.label.setPixmap(pix)
 
-    def btn_image_guide(self):
-        pass
+    def image_guide(self):
+        self.new_ui = ImageGuide()
+        self.new_ui.show()
+        self.new_ui.signal.connect(self.add_label)
+
+    def video_guide(self):
+        self.new_ui = VideoGuide()
+        self.new_ui.show()
+        self.new_ui.signal.connect(self.add_label)
+
+    def camera_guide(self):
+        self.new_ui = CameraGuide()
+        self.new_ui.show()
+        self.new_ui.signal.connect(self.add_label)
+
+    def add_label(self, cls, file):
+        cls_map = {0: '图片检测', 1: '视频检测', 2: '摄像头检测'}
+        print(f'接收到{cls_map[cls]}任务，文件地址为：', file)
+        self.new_ui.close()
 
     def button_image_open(self):
         print('打开图片...')
@@ -377,6 +395,141 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
             self.detect(img, self.im_result)
         else:
             self.shutdown_stream()
+
+
+class ImageGuide(QtWidgets.QWidget):
+    signal = QtCore.pyqtSignal(int, str)
+
+    def __init__(self):
+        super(ImageGuide, self).__init__()
+        self.resize(400, 250)
+        self.setWindowTitle('图片检测')
+        self.image_guide()
+
+    def image_guide(self):
+        # pass
+        self.btn_query_image = QtWidgets.QPushButton('选择图片')
+        self.btn_query_image.clicked.connect(self.query_file)
+        self.btn_query_folder = QtWidgets.QPushButton('选择文件夹')
+        self.btn_query_folder.clicked.connect(self.query_folder)
+
+        self.vbox = QtWidgets.QVBoxLayout(self)
+        self.vbox.addWidget(self.btn_query_image)
+        self.vbox.addWidget(self.btn_query_folder)
+        self.setLayout(self.vbox)
+
+    def query_file(self):
+        cls = ''
+        file_cls = ['jpg', 'png']
+        for i in file_cls:
+            cls += f'*.{i};;'
+        cls += 'All Files(*)'
+        file, _ = QtWidgets.QFileDialog.getOpenFileName(self, "打开文件", "", cls)
+        self.signal.emit(0, file)
+
+    def query_folder(self):
+        folder = QtWidgets.QFileDialog.getExistingDirectory(self, "选取文件夹", '')
+        self.signal.emit(0, folder)
+
+
+class VideoGuide(QtWidgets.QWidget):
+    signal = QtCore.pyqtSignal(int, str)
+
+    def __init__(self):
+        super(VideoGuide, self).__init__()
+        self.setWindowTitle('视频检测')
+        self.geometry().setWidth(500)
+        self.geometry().setHeight(250)
+        self.video_guide()
+
+    def video_guide(self):
+        self.le_url = QtWidgets.QLineEdit()
+        self.le_url.setPlaceholderText('请输入URL或点击下方按钮打开本地视频')
+
+        self.btn_video = QtWidgets.QPushButton('选择视频')
+        self.btn_video.clicked.connect(self.query_video)
+
+        self.btn_ok = QtWidgets.QPushButton('确定')
+        self.btn_ok.clicked.connect(self.post)
+
+        self.vbox = QtWidgets.QVBoxLayout()
+        self.hbox = QtWidgets.QHBoxLayout()
+        self.vbox.addWidget(self.le_url)
+        self.hbox.addWidget(self.btn_video)
+        self.hbox.addWidget(self.btn_ok)
+        self.vbox.addLayout(self.hbox)
+
+        self.setLayout(self.vbox)
+
+    def query_video(self):
+        cls = ''
+        file_cls = ['mp4', 'avi', 'mov']
+        for i in file_cls:
+            cls += f'*.{i};;'
+        cls += 'All Files(*)'
+        path, _ = QtWidgets.QFileDialog.getOpenFileName(self, "选择视频", "", cls)
+        self.le_url.setText(path)
+        self.le_url.setDisabled(True)
+
+    def post(self):
+        path = self.le_url.text()
+        flag = False
+        if os.path.isfile(path):
+            flag = True
+        if path.startswith(('http://', 'https://')):
+            flag = True
+        if flag:
+            self.signal.emit(1, path)
+        else:
+            msg_box = QtWidgets.QMessageBox(QtWidgets.QMessageBox.Warning, '警告', '请输入有效视频！')
+            msg_box.exec_()
+
+
+class CameraGuide(QtWidgets.QWidget):
+    signal = QtCore.pyqtSignal(int, str)
+
+    def __init__(self):
+        super(CameraGuide, self).__init__()
+        self.setWindowTitle('摄像头检测')
+        self.camera_guide()
+
+    def camera_guide(self):
+        self.le_url = QtWidgets.QLineEdit()
+        self.le_url.setPlaceholderText('请输入URL或点击下方按钮打开本地视频')
+
+        self.lab_open_camera = QtWidgets.QLabel('打开本地摄像头：')
+        self.cb_camera_list = QtWidgets.QComboBox()
+        for i in list_video_devices():
+            s = f'{i[0]} - {i[1]}'
+            self.cb_camera_list.addItem(s)
+
+        self.btn_ok = QtWidgets.QPushButton('确定')
+        self.btn_ok.clicked.connect(self.post)
+
+        self.tips = QtWidgets.QLabel('注：未输入合法URL即自动打开本地摄像头')
+
+        self.vbox = QtWidgets.QVBoxLayout()
+        self.vbox.addWidget(self.le_url)
+
+        self.hbox = QtWidgets.QHBoxLayout()
+        self.hbox.addWidget(self.lab_open_camera)
+        self.hbox.addWidget(self.cb_camera_list)
+
+        self.vbox.addLayout(self.hbox)
+
+        self.vbox.addWidget(self.btn_ok)
+
+        self.vbox.addWidget(self.tips)
+
+        self.setLayout(self.vbox)
+
+    def post(self):
+        path = self.le_url.text()
+        if path.startswith(('http://', 'https://', 'rtsp://')):
+            self.signal.emit(2, path)
+        else:
+            camera_id = str(self.cb_camera_list.currentIndex())
+            self.signal.emit(2, camera_id)
 
 
 if __name__ == '__main__':

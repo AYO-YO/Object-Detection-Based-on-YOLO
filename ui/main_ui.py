@@ -99,47 +99,46 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
     def image_guide(self):
         self.new_ui = ImageGuide()
         self.new_ui.show()
+        self.new_ui.signal.connect(self.add_label)
+
+    def add_label(self, file):
+        print('接收到文件', file)
+        self.new_ui.close()
 
 
 class ImageGuide(QtWidgets.QWidget):
+    signal = QtCore.pyqtSignal(str)
+
     def __init__(self):
         super(ImageGuide, self).__init__()
         self.resize(400, 250)
         self.setWindowTitle('图片检测')
-        self._signal = QtCore.pyqtSignal()
         self.image_guide()
 
     def image_guide(self):
         # pass
         self.btn_query_image = QtWidgets.QPushButton('选择图片')
-        self.btn_query_image.clicked.connect(self.image_file)
+        self.btn_query_image.clicked.connect(self.query_file)
         self.btn_query_folder = QtWidgets.QPushButton('选择文件夹')
-        self.btn_query_folder.clicked.connect(self.image_folder)
+        self.btn_query_folder.clicked.connect(self.query_folder)
 
         self.vbox = QtWidgets.QVBoxLayout(self)
         self.vbox.addWidget(self.btn_query_image)
         self.vbox.addWidget(self.btn_query_folder)
         self.setLayout(self.vbox)
 
-    def image_file(self):
-        cls = ('jpg', 'png')
-        self.query_file(cls)
-
-    def image_folder(self):
-        print(self.query_folder())
-
-    def query_file(self, file_cls: iter):
+    def query_file(self):
         cls = ''
+        file_cls = ['jpg', 'png']
         for i in file_cls:
             cls += f'*.{i};;'
         cls += 'All Files(*)'
         file, _ = QtWidgets.QFileDialog.getOpenFileName(self, "打开文件", "", cls)
-
-        self._signal.emit(file)
+        self.signal.emit(file)
 
     def query_folder(self):
         folder = QtWidgets.QFileDialog.getExistingDirectory(self, "选取文件夹", '')
-        return folder
+        self.signal.emit(folder)
 
 
 if __name__ == '__main__':

@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
+import os
 import sys
 
+from PyCameraList.camera_device import list_video_devices
 from PyQt5 import QtCore, QtGui, QtWidgets
 
 
@@ -95,14 +97,27 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
 
     def init_slots(self):
         self.btn_img.clicked.connect(self.image_guide)
+        self.btn_video.clicked.connect(self.video_guide)
+        self.btn_camera.clicked.connect(self.camera_guide)
 
     def image_guide(self):
         self.new_ui = ImageGuide()
         self.new_ui.show()
         self.new_ui.signal.connect(self.add_label)
 
-    def add_label(self, file):
-        print('接收到文件', file)
+    def video_guide(self):
+        self.new_ui = VideoGuide()
+        self.new_ui.show()
+        self.new_ui.signal.connect(self.add_label)
+
+    def camera_guide(self):
+        self.new_ui = CameraGuide()
+        self.new_ui.show()
+        self.new_ui.signal.connect(self.add_label)
+
+    def add_label(self, cls, file):
+        cls_map = {0: '图片检测', 1: '视频检测', 2: '摄像头检测'}
+        print(f'接收到{cls_map[cls]}任务，文件地址为：', file)
         self.new_ui.close()
 
 
@@ -134,11 +149,111 @@ class ImageGuide(QtWidgets.QWidget):
             cls += f'*.{i};;'
         cls += 'All Files(*)'
         file, _ = QtWidgets.QFileDialog.getOpenFileName(self, "打开文件", "", cls)
-        self.signal.emit(file)
+        self.signal.emit(0, file)
 
     def query_folder(self):
         folder = QtWidgets.QFileDialog.getExistingDirectory(self, "选取文件夹", '')
-        self.signal.emit(folder)
+        self.signal.emit(0, folder)
+
+
+class VideoGuide(QtWidgets.QWidget):
+    signal = QtCore.pyqtSignal(int, str)
+
+    def __init__(self):
+        super(VideoGuide, self).__init__()
+        self.setWindowTitle('视频检测')
+        self.geometry().setWidth(500)
+        self.geometry().setHeight(250)
+        self.video_guide()
+
+    def video_guide(self):
+        self.le_url = QtWidgets.QLineEdit()
+        self.le_url.setPlaceholderText('请输入URL或点击下方按钮打开本地视频')
+
+        self.btn_video = QtWidgets.QPushButton('选择视频')
+        self.btn_video.clicked.connect(self.query_video)
+
+        self.btn_ok = QtWidgets.QPushButton('确定')
+        self.btn_ok.clicked.connect(self.post)
+
+        self.vbox = QtWidgets.QVBoxLayout()
+        self.hbox = QtWidgets.QHBoxLayout()
+        self.vbox.addWidget(self.le_url)
+        self.hbox.addWidget(self.btn_video)
+        self.hbox.addWidget(self.btn_ok)
+        self.vbox.addLayout(self.hbox)
+
+        self.setLayout(self.vbox)
+
+    def query_video(self):
+        cls = ''
+        file_cls = ['mp4', 'avi', 'mov']
+        for i in file_cls:
+            cls += f'*.{i};;'
+        cls += 'All Files(*)'
+        path, _ = QtWidgets.QFileDialog.getOpenFileName(self, "选择视频", "", cls)
+        self.le_url.setText(path)
+        self.le_url.setDisabled(True)
+
+    def post(self):
+        path = self.le_url.text()
+        flag = False
+        if os.path.isfile(path):
+            flag = True
+        if path.startswith(('http://', 'https://')):
+            flag = True
+        if flag:
+            self.signal.emit(1, path)
+        else:
+            msg_box = QtWidgets.QMessageBox(QtWidgets.QMessageBox.Warning, '警告', '请输入有效视频！')
+            msg_box.exec_()
+
+
+class CameraGuide(QtWidgets.QWidget):
+    signal = QtCore.pyqtSignal(int, str)
+
+    def __init__(self):
+        super(CameraGuide, self).__init__()
+        self.setWindowTitle('摄像头检测')
+        self.camera_guide()
+
+    def camera_guide(self):
+        self.le_url = QtWidgets.QLineEdit()
+        self.le_url.setPlaceholderText('请输入URL或点击下方按钮打开本地视频')
+
+        self.lab_open_camera = QtWidgets.QLabel('打开本地摄像头：')
+        self.cb_camera_list = QtWidgets.QComboBox()
+        for i in list_video_devices():
+            s = f'{i[0]} - {i[1]}'
+            self.cb_camera_list.addItem(s)
+
+        self.btn_ok = QtWidgets.QPushButton('确定')
+        self.btn_ok.clicked.connect(self.post)
+
+        self.tips = QtWidgets.QLabel('注：未输入合法URL即自动打开本地摄像头')
+
+        self.vbox = QtWidgets.QVBoxLayout()
+        self.vbox.addWidget(self.le_url)
+
+        self.hbox = QtWidgets.QHBoxLayout()
+        self.hbox.addWidget(self.lab_open_camera)
+        self.hbox.addWidget(self.cb_camera_list)
+
+        self.vbox.addLayout(self.hbox)
+
+        self.vbox.addWidget(self.btn_ok)
+
+        self.vbox.addWidget(self.tips)
+
+        self.setLayout(self.vbox)
+
+    def post(self):
+        path = self.le_url.text()
+        if path.startswith(('http://', 'https://', 'rtsp://')):
+            self.signal.emit(2, path)
+        else:
+            camera_id = str(self.cb_camera_list.currentIndex())
+            self.signal.emit(2, camera_id)
 
 
 if __name__ == '__main__':

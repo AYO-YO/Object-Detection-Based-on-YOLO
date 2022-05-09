@@ -290,9 +290,6 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
         self.retranslateUi(MainWindow)
         QtCore.QMetaObject.connectSlotsByName(MainWindow)
 
-    def camera_ui(self):
-        pass
-
     def retranslateUi(self, MainWindow):
         _translate = QtCore.QCoreApplication.translate
         MainWindow.setWindowTitle(_translate("MainWindow", "基于YOLO的移动物体检测分类系统"))
@@ -318,9 +315,12 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
         self.new_ui.signal.connect(self.add_label)
 
     def video_guide(self):
-        self.new_ui = VideoGuide()
-        self.new_ui.show()
-        self.new_ui.signal.connect(self.add_label)
+        if self.timer_video.isActive():
+            self.shutdown_stream()
+        else:
+            self.new_ui = VideoGuide()
+            self.new_ui.show()
+            self.new_ui.signal.connect(self.add_label)
 
     def camera_guide(self):
         if self.timer_video.isActive():
@@ -334,15 +334,17 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
         cls_map = {0: '图片检测', 1: '视频检测', 2: '摄像头检测'}
         print(f'接收到{cls_map[cls]}任务,{cls_map[cls][:-2]}地址为：', file)
         self.new_ui.close()
-        if cls == 0:
+        if cls == 0:  # 图片检测信号
             if os.path.isdir(file):
                 self.need_cls = True
             self.source = file
             self.pre_detect()
-        elif cls == 1:
+        elif cls == 1:  # 视频检测信号
             self.cap = cv2.VideoCapture()
             is_url: bool = file.startswith(('http://', 'https://'))
             if is_url:
+                if not os.path.exists('tmp/video'):
+                    os.makedirs('tmp/video')
                 torch.hub.download_url_to_file(file, 'tmp/video/net_video.mp4')
                 file = 'tmp/video/net_video.mp4'
             flag = self.cap.open(file)
@@ -352,16 +354,16 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
             else:
                 self.timer_video.start(30)
                 self.btn_camera.setDisabled(True)
-        elif cls == 2:
+                self.btn_img.setDisabled(True)
+                self.btn_video.setText('关闭视频')
+        elif cls == 2:  # 摄像头检测信号
             is_url: bool = file.startswith('rtsp://')
             if is_url:
                 self.cap = cv2.VideoCapture(file)
-
                 self.timer_video.start(30)
                 self.btn_video.setDisabled(True)
                 self.btn_img.setDisabled(True)
                 self.btn_camera.setText(u"关闭摄像头")
-                self.btn_camera.clicked.connect(self.shutdown_stream)
             else:
                 self.cap = cv2.VideoCapture()
                 if not self.timer_video.isActive():

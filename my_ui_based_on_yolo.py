@@ -16,14 +16,14 @@ import numpy as np
 import torch
 import torch.backends.cudnn as cudnn
 import yaml
+from PIL import Image
 from PyCameraList.camera_device import list_video_devices
 from PyQt5 import QtCore, QtGui, QtWidgets
 
 from models.common import DetectMultiBackend
 from utils.augmentations import letterbox
 from utils.datasets import LoadImages
-from utils.general import LOGGER, check_img_size, non_max_suppression, scale_coords, increment_path, strip_optimizer, \
-    colorstr
+from utils.general import LOGGER, check_img_size, non_max_suppression, scale_coords, increment_path, strip_optimizer
 from utils.plots import save_one_box, Annotator, colors
 from utils.torch_utils import select_device, time_sync
 
@@ -79,6 +79,8 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
         self.last_res = ''  # 上一次推理结果，当视频推理结果未发生变化时，则不打印结果
         cudnn.benchmark = True
 
+        self.need_cls = False  # 是否需要分类保存
+
         # 加载模型
         # TODO: 加入手动选择模型后应将此处的加载模型改为手动选择的路径
         print(self.data)
@@ -133,6 +135,7 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
             imc = self.im_result.copy() if self.save_crop else self.im_result  # for save_crop
             # 标注器
             annotator = Annotator(self.im_result, line_width=self.line_thickness, example=str(self.names))
+            clss = set()
             if len(det):
                 # 将框从 img_size 重新缩放为 im0 大小
                 det[:, :4] = scale_coords(im.shape[2:], det[:, :4], self.im_result.shape).round()
@@ -145,16 +148,23 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
                 # 将结果保存至本地
                 for *xyxy, conf, cls in reversed(det):
                     if self.save_img or self.save_crop or self.view_img:  # Add bbox to image
-                        c = int(cls)  # integer class
+                        c = int(cls)  # 类别索引
                         label = None if self.hide_labels else (
                             self.names[c] if self.hide_conf else f'{self.names[c]} {conf:.2f}')
                         annotator.box_label(xyxy, label, color=colors(c, True))
                         if self.save_crop:
                             save_one_box(xyxy, imc, BGR=True)
+                        if self.need_cls:
+                            clss.add(c)
 
             # 串流结果
             self.im_result = annotator.result()
+
             self.showResult()
+            # 是否需要分类保存
+            if self.need_cls:
+                for i in clss:
+                    self.save_cls_result(self.im_result, i)
 
         # 输出推理时间
         if s != self.last_res:
@@ -165,9 +175,6 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
         # 输出结果
         t = tuple(x / self.seen * 1E3 for x in self.dt)  # 图片的速度
         LOGGER.info(f'大小为{self.img_sz}的图像处理速度: 预处理 --- %.1fms, 推理 --- %.1fms,  NMS --- %.1fms' % t)
-        if self.save_txt or self.save_img:
-            s = f"\n{len(list(self.save_dir.glob('labels/*.txt')))} labels 保存至 {self.save_dir / 'labels'}" if self.save_txt else ''
-            LOGGER.info(f"结果保存至 {colorstr('bold', self.save_dir)}{s}")
         if self.update:
             strip_optimizer(self.weights)  # 更新模型（修复 SourceChangeWarning）
 
@@ -186,6 +193,21 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
             self.detect(im, im0s)
 
         self.after_detect()
+
+    def save_cls_result(self, im_row, c):
+        result = cv2.cvtColor(im_row, cv2.COLOR_BGR2RGB)
+        im = Image.fromarray(result)
+        i = 0
+        dirs = os.path.join(self.save_dir, self.names[c])
+        path = os.path.join(dirs, f'{i}.jpg')
+        while os.path.exists(path):
+            i += 1
+            dirs = os.path.join(self.save_dir, self.names[c])
+            path = os.path.join(dirs, f'{i}.jpg')
+        if not os.path.exists(dirs):
+            os.makedirs(dirs)
+        im.save(path)
+        LOGGER.info(f'已保存至{path}')
 
     def showResult(self):
         result = cv2.cvtColor(self.im_result, cv2.COLOR_BGR2BGRA)
@@ -308,18 +330,18 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
 
     def add_label(self, cls, file):
         cls_map = {0: '图片检测', 1: '视频检测', 2: '摄像头检测'}
-        print(f'接收到{cls_map[cls]}任务，文件地址为：', file)
+        print(f'接收到{cls_map[cls]}任务,{cls_map[cls][:-2]}地址为：', file)
         self.new_ui.close()
-
-    def button_image_open(self):
-        print('打开图片...')
-
-        img_name, _ = QtWidgets.QFileDialog.getOpenFileName(self, "打开图片", "", "*.jpg;*.png;*.bmp;;All Files(*)")
-        if not img_name:
-            return
-        print(f'已选择图片{img_name}...')
-        self.source = img_name
-        self.pre_detect()
+        match cls:
+            case 0:
+                if os.path.isdir(file):
+                    self.need_cls = True
+                self.source = file
+                self.pre_detect()
+            case 1:
+                pass
+            case 2:
+                pass
 
     def load_video_stream(self):
         self.out = cv2.VideoWriter('./tmp/video/prediction.avi', cv2.VideoWriter_fourcc(*'MJPG'), 20,
@@ -425,10 +447,14 @@ class ImageGuide(QtWidgets.QWidget):
             cls += f'*.{i};;'
         cls += 'All Files(*)'
         file, _ = QtWidgets.QFileDialog.getOpenFileName(self, "打开文件", "", cls)
+        if not file:
+            return
         self.signal.emit(0, file)
 
     def query_folder(self):
         folder = QtWidgets.QFileDialog.getExistingDirectory(self, "选取文件夹", '')
+        if not folder:
+            return
         self.signal.emit(0, folder)
 
 
@@ -468,6 +494,8 @@ class VideoGuide(QtWidgets.QWidget):
             cls += f'*.{i};;'
         cls += 'All Files(*)'
         path, _ = QtWidgets.QFileDialog.getOpenFileName(self, "选择视频", "", cls)
+        if not path:
+            return
         self.le_url.setText(path)
         self.le_url.setDisabled(True)
 

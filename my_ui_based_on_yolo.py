@@ -8,7 +8,6 @@ import random
 #
 # WARNING! All changes made in this file will be lost!
 import sys
-import time
 from pathlib import Path
 
 import cv2
@@ -43,7 +42,7 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
         self.init_logo()
         self.init_slots()
         self.cap = None
-        self.weights = ROOT / 'weights/yolov5s.pt'  # 权重模型
+        self.weights = ROOT / 'weights/yolov5m.pt'  # 权重模型
         self.source = ''  # 文件/目录/URL/通配符批量选择文件, 0 -- 摄像头
         self.data = 'data/coco128.yaml'  # 数据集.yaml路径
         self.img_sz = (640, 640)  # 图片大小(height, width)
@@ -64,14 +63,14 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
         self.augment = False  # 增强推理
         self.visualize = False  # 可视化特征
         self.update = False  # 更新所有模型
-        self.name = 'tmp'  # 保存结果到 project/name
+        self.project = ROOT / 'tmp'  # 运行的目录
+        self.name = 'cls'  # 保存结果到 project/name
         self.exist_ok = False  # 是否使用现有的 project/name 若为True，则使用最近的一次结果文件夹
         self.line_thickness = 3  # 边框厚度(px)
         self.hide_labels = False  # 是否隐藏标签
         self.hide_conf = False  # 隐藏置信度
         self.half = False  # 使用 FP16 半精度推理
         self.dnn = False  # 使用 OpenCV DNN 进行 ONNX 推理
-        self.project = ROOT / 'tmp'  # 运行的目录
         self.save_dir = increment_path(Path(self.project) / self.name, exist_ok=self.exist_ok)  # 保存的文件夹
         self.dt, self.seen = [0.0, 0.0, 0.0], 0
         self.device = select_device(self.device)
@@ -79,7 +78,7 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
         self.last_res = ''  # 上一次推理结果，当视频推理结果未发生变化时，则不打印结果
         cudnn.benchmark = True
 
-        self.need_cls = False  # 是否需要分类保存
+        self.need_cls = True  # 是否需要分类保存
 
         # 加载模型
         # TODO: 加入手动选择模型后应将此处的加载模型改为手动选择的路径
@@ -291,9 +290,6 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
         self.retranslateUi(MainWindow)
         QtCore.QMetaObject.connectSlotsByName(MainWindow)
 
-    def camera_ui(self):
-        pass
-
     def retranslateUi(self, MainWindow):
         _translate = QtCore.QCoreApplication.translate
         MainWindow.setWindowTitle(_translate("MainWindow", "基于YOLO的移动物体检测分类系统"))
@@ -319,9 +315,12 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
         self.new_ui.signal.connect(self.add_label)
 
     def video_guide(self):
-        self.new_ui = VideoGuide()
-        self.new_ui.show()
-        self.new_ui.signal.connect(self.add_label)
+        if self.timer_video.isActive():
+            self.shutdown_stream()
+        else:
+            self.new_ui = VideoGuide()
+            self.new_ui.show()
+            self.new_ui.signal.connect(self.add_label)
 
     def camera_guide(self):
         if self.timer_video.isActive():
@@ -335,23 +334,36 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
         cls_map = {0: '图片检测', 1: '视频检测', 2: '摄像头检测'}
         print(f'接收到{cls_map[cls]}任务,{cls_map[cls][:-2]}地址为：', file)
         self.new_ui.close()
-        if cls == 0:
+        if cls == 0:  # 图片检测信号
             if os.path.isdir(file):
                 self.need_cls = True
             self.source = file
             self.pre_detect()
-        elif cls == 1:
-            pass
-        elif cls == 2:
+        elif cls == 1:  # 视频检测信号
+            self.cap = cv2.VideoCapture()
+            is_url: bool = file.startswith(('http://', 'https://'))
+            if is_url:
+                if not os.path.exists('tmp/video'):
+                    os.makedirs('tmp/video')
+                torch.hub.download_url_to_file(file, 'tmp/video/net_video.mp4')
+                file = 'tmp/video/net_video.mp4'
+            flag = self.cap.open(file)
+            if not flag:
+                QtWidgets.QMessageBox.warning(self, u"Warning", u"打开视频失败", buttons=QtWidgets.QMessageBox.Ok,
+                                              defaultButton=QtWidgets.QMessageBox.Ok)
+            else:
+                self.timer_video.start(30)
+                self.btn_camera.setDisabled(True)
+                self.btn_img.setDisabled(True)
+                self.btn_video.setText('关闭视频')
+        elif cls == 2:  # 摄像头检测信号
             is_url: bool = file.startswith('rtsp://')
             if is_url:
                 self.cap = cv2.VideoCapture(file)
-
                 self.timer_video.start(30)
                 self.btn_video.setDisabled(True)
                 self.btn_img.setDisabled(True)
                 self.btn_camera.setText(u"关闭摄像头")
-                self.btn_camera.clicked.connect(self.shutdown_stream)
             else:
                 self.cap = cv2.VideoCapture()
                 if not self.timer_video.isActive():
@@ -368,26 +380,6 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
                 else:
                     self.shutdown_stream()
 
-    def load_video_stream(self):
-        self.out = cv2.VideoWriter('./tmp/video/prediction.avi', cv2.VideoWriter_fourcc(*'MJPG'), 20,
-                                   (int(self.cap.get(3)), int(self.cap.get(4))))
-        self.timer_video.start(30)
-
-    def button_video_open(self):
-        self.cap = cv2.VideoCapture()
-        video_name, _ = QtWidgets.QFileDialog.getOpenFileName(self, "打开视频", "", "*.mp4;;*.avi;;All Files(*)")
-
-        if not video_name:
-            return
-
-        flag = self.cap.open(video_name)
-        if not flag:
-            QtWidgets.QMessageBox.warning(self, u"Warning", u"打开视频失败", buttons=QtWidgets.QMessageBox.Ok,
-                                          defaultButton=QtWidgets.QMessageBox.Ok)
-        else:
-            self.timer_video.start(30)
-            self.btn_camera.setDisabled(True)
-
     def shutdown_stream(self):
         self.timer_video.stop()
         self.cap.release()
@@ -401,7 +393,6 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
         self.btn_camera.clicked.connect(self.camera_guide)
 
     def show_video_frame(self):
-        max_frame = 30
         _, img = self.cap.read()
         if img is not None:
             # 数据处理
@@ -412,8 +403,6 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
             # 转换
             img = img[..., ::-1].transpose((0, 3, 1, 2))  # BGR to RGB, BHWC to BCHW
             img = np.ascontiguousarray(img)
-
-            time.sleep(1 / max_frame)
 
             # 推理
             self.detect(img, self.im_result)

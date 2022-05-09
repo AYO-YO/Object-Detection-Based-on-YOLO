@@ -324,31 +324,54 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
         self.new_ui.signal.connect(self.add_label)
 
     def camera_guide(self):
-        self.new_ui = CameraGuide()
-        self.new_ui.show()
-        self.new_ui.signal.connect(self.add_label)
+        if self.timer_video.isActive():
+            self.shutdown_stream()
+        else:
+            self.new_ui = CameraGuide()
+            self.new_ui.show()
+            self.new_ui.signal.connect(self.add_label)
 
     def add_label(self, cls, file):
         cls_map = {0: '图片检测', 1: '视频检测', 2: '摄像头检测'}
         print(f'接收到{cls_map[cls]}任务,{cls_map[cls][:-2]}地址为：', file)
         self.new_ui.close()
-        match cls:
-            case 0:
-                if os.path.isdir(file):
-                    self.need_cls = True
-                self.source = file
-                self.pre_detect()
-            case 1:
-                pass
-            case 2:
-                pass
+        if cls == 0:
+            if os.path.isdir(file):
+                self.need_cls = True
+            self.source = file
+            self.pre_detect()
+        elif cls == 1:
+            pass
+        elif cls == 2:
+            is_url: bool = file.startswith('rtsp://')
+            if is_url:
+                self.cap = cv2.VideoCapture(file)
+
+                self.timer_video.start(30)
+                self.btn_video.setDisabled(True)
+                self.btn_img.setDisabled(True)
+                self.btn_camera.setText(u"关闭摄像头")
+                self.btn_camera.clicked.connect(self.shutdown_stream)
+            else:
+                self.cap = cv2.VideoCapture()
+                if not self.timer_video.isActive():
+                    pass
+                    # 默认使用第一个本地camera
+                    if not self.cap.open(int(file)):
+                        QtWidgets.QMessageBox.warning(self, u"Warning", u"打开摄像头失败", buttons=QtWidgets.QMessageBox.Ok,
+                                                      defaultButton=QtWidgets.QMessageBox.Ok)
+                    else:
+                        self.timer_video.start(30)
+                        self.btn_video.setDisabled(True)
+                        self.btn_img.setDisabled(True)
+                        self.btn_camera.setText(u"关闭摄像头")
+                else:
+                    self.shutdown_stream()
 
     def load_video_stream(self):
         self.out = cv2.VideoWriter('./tmp/video/prediction.avi', cv2.VideoWriter_fourcc(*'MJPG'), 20,
                                    (int(self.cap.get(3)), int(self.cap.get(4))))
         self.timer_video.start(30)
-        self.btn_video.setDisabled(True)
-        self.btn_img.setDisabled(True)
 
     def button_video_open(self):
         self.cap = cv2.VideoCapture()
@@ -362,41 +385,20 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
             QtWidgets.QMessageBox.warning(self, u"Warning", u"打开视频失败", buttons=QtWidgets.QMessageBox.Ok,
                                           defaultButton=QtWidgets.QMessageBox.Ok)
         else:
-            self.load_video_stream()
+            self.timer_video.start(30)
             self.btn_camera.setDisabled(True)
-
-    def button_camera_open(self):
-        use_url = False
-        if use_url:
-            url = 'rtsp://admin:admin@192.168.3.161:8554/live'
-            self.cap = cv2.VideoCapture(url)
-            # while self.cap.isOpened():
-            self.load_video_stream()
-        else:
-            self.cap = cv2.VideoCapture()
-        if not self.timer_video.isActive():
-            pass
-            # 默认使用第一个本地camera
-            if not self.cap.open(0):
-                QtWidgets.QMessageBox.warning(self, u"Warning", u"打开摄像头失败", buttons=QtWidgets.QMessageBox.Ok,
-                                              defaultButton=QtWidgets.QMessageBox.Ok)
-            else:
-                self.load_video_stream()
-                self.btn_camera.setText(u"关闭摄像头")
-
-        else:
-            self.shutdown_stream()
 
     def shutdown_stream(self):
         self.timer_video.stop()
         self.cap.release()
-        self.out.release()
+        # self.out.release()
         self.label.clear()
         self.init_logo()
         self.btn_video.setDisabled(False)
         self.btn_img.setDisabled(False)
         self.btn_camera.setDisabled(False)
         self.btn_camera.setText(u"摄像头检测")
+        self.btn_camera.clicked.connect(self.camera_guide)
 
     def show_video_frame(self):
         max_frame = 30
@@ -553,7 +555,7 @@ class CameraGuide(QtWidgets.QWidget):
 
     def post(self):
         path = self.le_url.text()
-        if path.startswith(('http://', 'https://', 'rtsp://')):
+        if path.startswith('rtsp://'):
             self.signal.emit(2, path)
         else:
             camera_id = str(self.cb_camera_list.currentIndex())

@@ -175,7 +175,8 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
         t = tuple(x / self.seen * 1E3 for x in self.dt)  # 图片的速度
         LOGGER.info(f'大小为{self.img_sz}的图像处理速度: 预处理 --- %.1fms, 推理 --- %.1fms,  NMS --- %.1fms' % t)
         if self.need_cls:
-            LOGGER.info(f'已保存至{self.cls_path}')
+            path = '\\'.join(self.cls_path.split("\\")[:-2])
+            LOGGER.info(f'已保存至{path}')
         if self.update:
             strip_optimizer(self.weights)  # 更新模型（修复 SourceChangeWarning）
 

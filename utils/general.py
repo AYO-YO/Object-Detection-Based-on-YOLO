@@ -698,10 +698,10 @@ def clip_coords(boxes, shape):
 
 def non_max_suppression(prediction, conf_thres=0.25, iou_thres=0.45, classes=None, agnostic=False, multi_label=False,
                         labels=(), max_det=300):
-    """Runs Non-Maximum Suppression (NMS) on inference results
+    """对推理结果运行非极大值抑制 (NMS)
 
     Returns:
-         list of detections, on (n,6) tensor per image [xyxy, conf, cls]
+         预测结果列表，每个图像的 (n,6) 张量 [xyxy, conf, cls]
     """
 
     nc = prediction.shape[2] - 5  # number of classes

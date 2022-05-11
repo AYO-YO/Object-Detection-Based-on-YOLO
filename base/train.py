@@ -462,8 +462,8 @@ def parse_opt(known=False):
     parser.add_argument('--hyp', type=str, default=ROOT / '../data/hyps/hyp.scratch-low.yaml',
                         help='hyperparameters path')
     # 训练轮次
-    parser.add_argument('--epochs', type=int, default=50)
-    parser.add_argument('--batch-size', type=int, default=2, help='total batch size for all GPUs, -1 for autobatch')
+    parser.add_argument('--epochs', type=int, default=100)
+    parser.add_argument('--batch-size', type=int, default=-1, help='total batch size for all GPUs, -1 for autobatch')
     parser.add_argument('--imgsz', '--img', '--img-size', type=int, default=320,
                         help='train, val image size (pixels)')
     parser.add_argument('--rect', action='store_true', help='rectangular training')
@@ -487,7 +487,7 @@ def parse_opt(known=False):
     parser.add_argument('--quad', action='store_true', help='quad dataloader')
     parser.add_argument('--cos-lr', action='store_true', help='cosine LR scheduler')
     parser.add_argument('--label-smoothing', type=float, default=0.0, help='Label smoothing epsilon')
-    parser.add_argument('--patience', type=int, default=3, help='EarlyStopping patience (epochs without improvement)')
+    parser.add_argument('--patience', type=int, default=0, help='EarlyStopping patience (epochs without improvement)')
     parser.add_argument('--freeze', nargs='+', type=int, default=[0], help='Freeze layers: backbone=10, first3=0 1 2')
     parser.add_argument('--save-period', type=int, default=-1, help='Save checkpoint every x epochs (disabled if < 1)')
     parser.add_argument('--local_rank', type=int, default=-1, help='DDP parameter, do not modify')

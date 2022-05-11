@@ -42,16 +42,16 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
         self.init_logo()
         self.init_slots()
         self.cap = None
-        self.weights = ROOT / 'weights/yolov5m.pt'  # 权重模型
+        self.weights = ROOT / 'weights/mycoco_m.pt'  # 权重模型
         self.source = ''  # 文件/目录/URL/通配符批量选择文件, 0 -- 摄像头
-        self.data = 'data/coco128.yaml'  # 数据集.yaml路径
+        self.data = 'data/mycoco.yaml'  # 数据集.yaml路径
         self.img_sz = (640, 640)  # 图片大小(height, width)
         self.out = None
         self.augment = True  # 增强推理
         self.visualize = False  # 可视化特征
         self.conf_thres = 0.25  # 置信阈值
         self.iou_thres = 0.45  # nms的IOU阈值
-        self.max_det = 1000  # 每张图像的最大检测次数
+        self.max_det = 300  # 每张图像的最大检测次数
         self.device = '0'  # cuda 设备, 即 0 or 0,1,2,3 or cpu
         self.view_img = False  # 展示结果
         self.save_txt = False  # 保存结果到 *.txt
@@ -62,7 +62,7 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
         self.agnostic_nms = False  # 与类别无关的NMS
         self.augment = False  # 增强推理
         self.visualize = False  # 可视化特征
-        self.update = False  # 更新所有模型
+        self.update = False  # 更新模型(边推理边强化训练)
         self.project = ROOT / 'tmp'  # 运行的目录
         self.name = 'cls'  # 保存结果到 project/name
         self.exist_ok = False  # 是否使用现有的 project/name 若为True，则使用最近的一次结果文件夹
@@ -174,6 +174,8 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
         # 输出结果
         t = tuple(x / self.seen * 1E3 for x in self.dt)  # 图片的速度
         LOGGER.info(f'大小为{self.img_sz}的图像处理速度: 预处理 --- %.1fms, 推理 --- %.1fms,  NMS --- %.1fms' % t)
+        if self.need_cls:
+            LOGGER.info(f'已保存至{self.cls_path}')
         if self.update:
             strip_optimizer(self.weights)  # 更新模型（修复 SourceChangeWarning）
 
@@ -198,15 +200,14 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
         im = Image.fromarray(result)
         i = 0
         dirs = os.path.join(self.save_dir, self.names[c])
-        path = os.path.join(dirs, f'{i}.jpg')
-        while os.path.exists(path):
+        self.cls_path = os.path.join(dirs, f'{i}.jpg')
+        while os.path.exists(self.cls_path):
             i += 1
             dirs = os.path.join(self.save_dir, self.names[c])
-            path = os.path.join(dirs, f'{i}.jpg')
+            self.cls_path = os.path.join(dirs, f'{i}.jpg')
         if not os.path.exists(dirs):
             os.makedirs(dirs)
-        im.save(path)
-        LOGGER.info(f'已保存至{path}')
+        im.save(self.cls_path)
 
     def showResult(self):
         result = cv2.cvtColor(self.im_result, cv2.COLOR_BGR2BGRA)
@@ -383,13 +384,13 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
     def shutdown_stream(self):
         self.timer_video.stop()
         self.cap.release()
-        # self.out.release()
         self.label.clear()
         self.init_logo()
         self.btn_video.setDisabled(False)
         self.btn_img.setDisabled(False)
         self.btn_camera.setDisabled(False)
         self.btn_camera.setText(u"摄像头检测")
+        self.btn_video.setText(u"视频检测")
         self.btn_camera.clicked.connect(self.camera_guide)
 
     def show_video_frame(self):

@@ -402,7 +402,7 @@ class DetectMultiBackend(nn.Module):
         self.__dict__.update(locals())  # assign all variables to self
 
     def forward(self, im, augment=False, visualize=False, val=False):
-        # YOLOv5 MultiBackend inference
+        # YOLOv5 多后端推理
         b, ch, h, w = im.shape  # batch, channel, height, width
         if self.pt or self.jit:  # PyTorch
             y = self.model(im) if self.jit else self.model(im, augment=augment, visualize=visualize)

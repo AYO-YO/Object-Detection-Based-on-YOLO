@@ -142,8 +142,8 @@ class Loggers():
     def on_train_end(self, last, best, plots, epoch, results):
         # Callback runs on training end
         if plots:
-            plot_results(file=self.save_dir / 'results.csv')  # save results.png
-        files = ['results.png', 'confusion_matrix.png', *(f'{x}_curve.png' for x in ('F1', 'PR', 'P', 'R'))]
+            plot_results(file=self.save_dir / 'results.csv')  # save results.svg
+        files = ['results.svg', 'confusion_matrix.svg', *(f'{x}_curve.svg' for x in ('F1', 'PR', 'P', 'R'))]
         files = [(self.save_dir / f) for f in files if (self.save_dir / f).exists()]  # filter
 
         if self.tb:

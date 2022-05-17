@@ -4,44 +4,67 @@ import sys
 
 from PyCameraList.camera_device import list_video_devices
 from PyQt5 import QtCore, QtGui, QtWidgets
+from PyQt5.QtCore import QPropertyAnimation
+from qt_material import apply_stylesheet
 
 
 class Ui_MainWindow(QtWidgets.QMainWindow):
     def __init__(self):
         super(Ui_MainWindow, self).__init__()
         self.setupUi(self)
+        self.init()
+
+    def init(self):
+        self.init_logo()
+        self.init_bg()
+        self.init_btn()
         self.init_slots()
+
+    def init_logo(self):
+        self.setWindowIcon(QtGui.QIcon('./icon.svg'))
+
+    def init_bg(self):
+        pix = QtGui.QPixmap('bg.png')
+        self.label.setScaledContents(True)
+        self.label.setPixmap(pix)
+
+    def init_btn(self):
+        self.btn_camera.setDisabled(False)
+        self.btn_camera.setText(u'摄像头检测')
+        self.btn_img.setDisabled(False)
+        self.btn_img.setText(u'图片检测')
+        self.btn_video.setDisabled(False)
+        self.btn_video.setText(u'视频检测')
 
     def setupUi(self, MainWindow):
         MainWindow.setObjectName("基于YOLO的移动物体检测分类系统")
-        MainWindow.resize(1200, 800)
+        MainWindow.resize(1200, 700)
         self.centralwidget = QtWidgets.QWidget(MainWindow)
         self.centralwidget.setObjectName("centralwidget")
         self.horizontalLayout_2 = QtWidgets.QHBoxLayout(self.centralwidget)
         self.horizontalLayout_2.setObjectName("horizontalLayout_2")
         self.horizontalLayout = QtWidgets.QHBoxLayout()
-        self.horizontalLayout.setSizeConstraint(QtWidgets.QLayout.SetNoConstraint)
         self.horizontalLayout.setObjectName("horizontalLayout")
         self.verticalLayout = QtWidgets.QVBoxLayout()
         self.verticalLayout.setContentsMargins(-1, -1, 0, -1)
         self.verticalLayout.setSpacing(80)
         self.verticalLayout.setObjectName("verticalLayout")
         self.btn_img = QtWidgets.QPushButton(self.centralwidget)
-        sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Minimum, QtWidgets.QSizePolicy.MinimumExpanding)
+        sizePolicy = QtWidgets.QSizePolicy()
         sizePolicy.setHorizontalStretch(0)
         sizePolicy.setVerticalStretch(0)
         sizePolicy.setHeightForWidth(self.btn_img.sizePolicy().hasHeightForWidth())
         self.btn_img.setSizePolicy(sizePolicy)
-        self.btn_img.setMinimumSize(QtCore.QSize(150, 100))
-        self.btn_img.setMaximumSize(QtCore.QSize(150, 100))
+        self.btn_img.setMinimumSize(QtCore.QSize(180, 100))
+        self.btn_img.setMaximumSize(QtCore.QSize(180, 100))
         font = QtGui.QFont()
         font.setFamily("Agency FB")
         font.setPointSize(12)
         self.btn_img.setFont(font)
         self.btn_img.setObjectName("pushButton_img")
-        self.verticalLayout.addWidget(self.btn_img, 0, QtCore.Qt.AlignHCenter)
+        self.verticalLayout.addWidget(self.btn_img, 0)
         self.btn_camera = QtWidgets.QPushButton(self.centralwidget)
-        sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Minimum, QtWidgets.QSizePolicy.Expanding)
+        sizePolicy = QtWidgets.QSizePolicy()
         sizePolicy.setHorizontalStretch(0)
         sizePolicy.setVerticalStretch(0)
         sizePolicy.setHeightForWidth(self.btn_camera.sizePolicy().hasHeightForWidth())
@@ -53,9 +76,9 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
         font.setPointSize(12)
         self.btn_camera.setFont(font)
         self.btn_camera.setObjectName("pushButton_camera")
-        self.verticalLayout.addWidget(self.btn_camera, 0, QtCore.Qt.AlignHCenter)
+        self.verticalLayout.addWidget(self.btn_camera, 0)
         self.btn_video = QtWidgets.QPushButton(self.centralwidget)
-        sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Minimum, QtWidgets.QSizePolicy.Expanding)
+        sizePolicy = QtWidgets.QSizePolicy()
         sizePolicy.setHorizontalStretch(0)
         sizePolicy.setVerticalStretch(0)
         sizePolicy.setHeightForWidth(self.btn_video.sizePolicy().hasHeightForWidth())
@@ -67,13 +90,13 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
         font.setPointSize(12)
         self.btn_video.setFont(font)
         self.btn_video.setObjectName("pushButton_video")
-        self.verticalLayout.addWidget(self.btn_video, 0, QtCore.Qt.AlignHCenter)
+        self.verticalLayout.addWidget(self.btn_video, 0)
         self.verticalLayout.setStretch(2, 1)
         self.horizontalLayout.addLayout(self.verticalLayout)
         self.label = QtWidgets.QLabel(self.centralwidget)
         self.label.setObjectName("label")
         self.horizontalLayout.addWidget(self.label)
-        self.horizontalLayout.setStretch(1, 5)
+        self.horizontalLayout.setStretch(1, 4)
         self.horizontalLayout_2.addLayout(self.horizontalLayout)
         MainWindow.setCentralWidget(self.centralwidget)
         self.menubar = QtWidgets.QMenuBar(MainWindow)
@@ -86,6 +109,9 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
 
         self.retranslateUi(MainWindow)
         QtCore.QMetaObject.connectSlotsByName(MainWindow)
+
+    def setAnimation(self):
+        self.animation = QPropertyAnimation(self, b'background-color')
 
     def retranslateUi(self, MainWindow):
         _translate = QtCore.QCoreApplication.translate
@@ -122,11 +148,11 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
 
 
 class ImageGuide(QtWidgets.QWidget):
-    signal = QtCore.pyqtSignal(str)
+    signal = QtCore.pyqtSignal(int, str)
 
     def __init__(self):
         super(ImageGuide, self).__init__()
-        self.resize(400, 250)
+        self.resize(500, 250)
         self.setWindowTitle('图片检测')
         self.image_guide()
 
@@ -162,8 +188,7 @@ class VideoGuide(QtWidgets.QWidget):
     def __init__(self):
         super(VideoGuide, self).__init__()
         self.setWindowTitle('视频检测')
-        self.geometry().setWidth(500)
-        self.geometry().setHeight(250)
+        self.resize(500, 250)
         self.video_guide()
 
     def video_guide(self):
@@ -215,6 +240,7 @@ class CameraGuide(QtWidgets.QWidget):
     def __init__(self):
         super(CameraGuide, self).__init__()
         self.setWindowTitle('摄像头检测')
+        self.resize(500, 200)
         self.camera_guide()
 
     def camera_guide(self):
@@ -247,6 +273,9 @@ class CameraGuide(QtWidgets.QWidget):
 
         self.setLayout(self.vbox)
 
+    def my_style(self):
+        self.btn_ok.setProperty('class', 'big_button')
+
     def post(self):
         path = self.le_url.text()
         if path.startswith(('http://', 'https://', 'rtsp://')):
@@ -259,5 +288,9 @@ class CameraGuide(QtWidgets.QWidget):
 if __name__ == '__main__':
     app = QtWidgets.QApplication(sys.argv)
     ui = Ui_MainWindow()
+    apply_stylesheet(app, theme='light_blue.xml', invert_secondary=True)
+    stylesheet = app.styleSheet()
+    with open('custom.css') as file:
+        app.setStyleSheet(stylesheet + file.read().format(**os.environ))
     ui.show()
     sys.exit(app.exec_())

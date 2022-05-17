@@ -18,6 +18,7 @@ import yaml
 from PIL import Image
 from PyCameraList.camera_device import list_video_devices
 from PyQt5 import QtCore, QtGui, QtWidgets
+from qt_material import apply_stylesheet
 
 from models.common import DetectMultiBackend
 from utils.augmentations import letterbox
@@ -39,20 +40,19 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
         self.im_result = None
         self.timer_video = QtCore.QTimer()
         self.setupUi(self)
-        self.init_logo()
-        self.init_slots()
+        self.init_main()
         self.cap = None
-        self.weights = ROOT / 'weights/yolov5m.pt'  # 权重模型
+        self.weights = ROOT / 'weights/mycoco_m.pt'  # 权重模型
         self.source = ''  # 文件/目录/URL/通配符批量选择文件, 0 -- 摄像头
-        self.data = 'data/coco128.yaml'  # 数据集.yaml路径
+        self.data = 'data/mycoco.yaml'  # 数据集.yaml路径
         self.img_sz = (640, 640)  # 图片大小(height, width)
         self.out = None
         self.augment = True  # 增强推理
         self.visualize = False  # 可视化特征
         self.conf_thres = 0.25  # 置信阈值
         self.iou_thres = 0.45  # nms的IOU阈值
-        self.max_det = 1000  # 每张图像的最大检测次数
-        self.device = '0'  # cuda 设备, 即 0 or 0,1,2,3 or cpu
+        self.max_det = 300  # 每张图像的最大检测次数
+        self.device = '0' if torch.cuda.is_available() else 'cpu'  # cuda 设备, 即 0 or 0,1,2,3 or cpu
         self.view_img = False  # 展示结果
         self.save_txt = False  # 保存结果到 *.txt
         self.save_conf = False  # 保存置信度 --save-txt labels
@@ -62,7 +62,7 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
         self.agnostic_nms = False  # 与类别无关的NMS
         self.augment = False  # 增强推理
         self.visualize = False  # 可视化特征
-        self.update = False  # 更新所有模型
+        self.update = False  # 更新模型(边推理边强化训练)
         self.project = ROOT / 'tmp'  # 运行的目录
         self.name = 'cls'  # 保存结果到 project/name
         self.exist_ok = False  # 是否使用现有的 project/name 若为True，则使用最近的一次结果文件夹
@@ -174,6 +174,9 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
         # 输出结果
         t = tuple(x / self.seen * 1E3 for x in self.dt)  # 图片的速度
         LOGGER.info(f'大小为{self.img_sz}的图像处理速度: 预处理 --- %.1fms, 推理 --- %.1fms,  NMS --- %.1fms' % t)
+        if self.need_cls:
+            path = '\\'.join(self.cls_path.split("\\")[:-2])
+            LOGGER.info(f'已保存至{path}')
         if self.update:
             strip_optimizer(self.weights)  # 更新模型（修复 SourceChangeWarning）
 
@@ -198,15 +201,14 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
         im = Image.fromarray(result)
         i = 0
         dirs = os.path.join(self.save_dir, self.names[c])
-        path = os.path.join(dirs, f'{i}.jpg')
-        while os.path.exists(path):
+        self.cls_path = os.path.join(dirs, f'{i}.jpg')
+        while os.path.exists(self.cls_path):
             i += 1
             dirs = os.path.join(self.save_dir, self.names[c])
-            path = os.path.join(dirs, f'{i}.jpg')
+            self.cls_path = os.path.join(dirs, f'{i}.jpg')
         if not os.path.exists(dirs):
             os.makedirs(dirs)
-        im.save(path)
-        LOGGER.info(f'已保存至{path}')
+        im.save(self.cls_path)
 
     def showResult(self):
         result = cv2.cvtColor(self.im_result, cv2.COLOR_BGR2BGRA)
@@ -218,6 +220,7 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
     def setupUi(self, MainWindow):
         MainWindow.setObjectName("基于YOLO的移动物体检测分类系统")
         MainWindow.resize(1200, 800)
+        self.setWindowTitle('基于YOLO的移动物体检测分类系统')
         self.centralwidget = QtWidgets.QWidget(MainWindow)
         self.centralwidget.setObjectName("centralwidget")
         self.horizontalLayout_2 = QtWidgets.QHBoxLayout(self.centralwidget)
@@ -235,8 +238,8 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
         sizePolicy.setVerticalStretch(0)
         sizePolicy.setHeightForWidth(self.btn_img.sizePolicy().hasHeightForWidth())
         self.btn_img.setSizePolicy(sizePolicy)
-        self.btn_img.setMinimumSize(QtCore.QSize(150, 100))
-        self.btn_img.setMaximumSize(QtCore.QSize(150, 100))
+        self.btn_img.setMinimumSize(QtCore.QSize(180, 100))
+        self.btn_img.setMaximumSize(QtCore.QSize(180, 100))
         font = QtGui.QFont()
         font.setFamily("Agency FB")
         font.setPointSize(12)
@@ -276,7 +279,7 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
         self.label = QtWidgets.QLabel(self.centralwidget)
         self.label.setObjectName("label")
         self.horizontalLayout.addWidget(self.label)
-        self.horizontalLayout.setStretch(1, 5)
+        self.horizontalLayout.setStretch(1, 4)
         self.horizontalLayout_2.addLayout(self.horizontalLayout)
         MainWindow.setCentralWidget(self.centralwidget)
         self.menubar = QtWidgets.QMenuBar(MainWindow)
@@ -286,28 +289,35 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
         self.statusbar = QtWidgets.QStatusBar(MainWindow)
         self.statusbar.setObjectName("statusbar")
         MainWindow.setStatusBar(self.statusbar)
-
-        self.retranslateUi(MainWindow)
         QtCore.QMetaObject.connectSlotsByName(MainWindow)
 
-    def retranslateUi(self, MainWindow):
-        _translate = QtCore.QCoreApplication.translate
-        MainWindow.setWindowTitle(_translate("MainWindow", "基于YOLO的移动物体检测分类系统"))
-        self.btn_img.setText(_translate("MainWindow", "图片检测"))
-        self.btn_camera.setText(_translate("MainWindow", "摄像头检测"))
-        self.btn_video.setText(_translate("MainWindow", "视频检测"))
-        self.label.setText(_translate("MainWindow", "TextLabel"))
+    def init_btn(self):
+        self.btn_camera.setDisabled(False)
+        self.btn_camera.setText(u'摄像头检测')
+        self.btn_img.setDisabled(False)
+        self.btn_img.setText(u'图片检测')
+        self.btn_video.setDisabled(False)
+        self.btn_video.setText(u'视频检测')
+
+    def init_logo(self):
+        self.setWindowIcon(QtGui.QIcon('ui/icon.svg'))
+
+    def init_bg(self):
+        pix = QtGui.QPixmap('ui/bg.png')
+        self.label.setScaledContents(True)
+        self.label.setPixmap(pix)
+
+    def init_main(self):
+        self.init_logo()
+        self.init_btn()
+        self.init_bg()
+        self.init_slots()
 
     def init_slots(self):
         self.btn_img.clicked.connect(self.image_guide)
         self.btn_video.clicked.connect(self.video_guide)
         self.btn_camera.clicked.connect(self.camera_guide)
         self.timer_video.timeout.connect(self.show_video_frame)
-
-    def init_logo(self):
-        pix = QtGui.QPixmap('icon.jpg')
-        self.label.setScaledContents(True)
-        self.label.setPixmap(pix)
 
     def image_guide(self):
         self.new_ui = ImageGuide()
@@ -340,6 +350,7 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
             self.source = file
             self.pre_detect()
         elif cls == 1:  # 视频检测信号
+            self.need_cls = True
             self.cap = cv2.VideoCapture()
             is_url: bool = file.startswith(('http://', 'https://'))
             if is_url:
@@ -355,10 +366,11 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
                 self.timer_video.start(30)
                 self.btn_camera.setDisabled(True)
                 self.btn_img.setDisabled(True)
-                self.btn_video.setText('关闭视频')
+                self.btn_video.setText(u'关闭视频')
         elif cls == 2:  # 摄像头检测信号
             is_url: bool = file.startswith('rtsp://')
             if is_url:
+                self.need_cls = True
                 self.cap = cv2.VideoCapture(file)
                 self.timer_video.start(30)
                 self.btn_video.setDisabled(True)
@@ -383,13 +395,8 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
     def shutdown_stream(self):
         self.timer_video.stop()
         self.cap.release()
-        # self.out.release()
         self.label.clear()
-        self.init_logo()
-        self.btn_video.setDisabled(False)
-        self.btn_img.setDisabled(False)
-        self.btn_camera.setDisabled(False)
-        self.btn_camera.setText(u"摄像头检测")
+        self.init_main()
         self.btn_camera.clicked.connect(self.camera_guide)
 
     def show_video_frame(self):
@@ -415,9 +422,10 @@ class ImageGuide(QtWidgets.QWidget):
 
     def __init__(self):
         super(ImageGuide, self).__init__()
-        self.resize(400, 250)
+        self.resize(500, 250)
         self.setWindowTitle('图片检测')
         self.image_guide()
+        self.setWindowIcon(QtGui.QIcon('ui/icon.svg'))
 
     def image_guide(self):
         # pass
@@ -455,9 +463,9 @@ class VideoGuide(QtWidgets.QWidget):
     def __init__(self):
         super(VideoGuide, self).__init__()
         self.setWindowTitle('视频检测')
-        self.geometry().setWidth(500)
-        self.geometry().setHeight(250)
+        self.resize(500, 250)
         self.video_guide()
+        self.setWindowIcon(QtGui.QIcon('ui/icon.svg'))
 
     def video_guide(self):
         self.le_url = QtWidgets.QLineEdit()
@@ -511,6 +519,8 @@ class CameraGuide(QtWidgets.QWidget):
         super(CameraGuide, self).__init__()
         self.setWindowTitle('摄像头检测')
         self.camera_guide()
+        self.resize(500, 250)
+        self.setWindowIcon(QtGui.QIcon('ui/icon.svg'))
 
     def camera_guide(self):
         self.le_url = QtWidgets.QLineEdit()
@@ -554,5 +564,9 @@ class CameraGuide(QtWidgets.QWidget):
 if __name__ == '__main__':
     app = QtWidgets.QApplication(sys.argv)
     ui = Ui_MainWindow()
+    apply_stylesheet(app, theme='light_blue.xml', invert_secondary=True)
+    stylesheet = app.styleSheet()
+    with open('ui/custom.css') as file:
+        app.setStyleSheet(stylesheet + file.read().format(**os.environ))
     ui.show()
     sys.exit(app.exec_())

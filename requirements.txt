@@ -21,15 +21,12 @@ seaborn>=0.11.0
 tensorflow~=2.3.0
 
 # Extras --------------------------------------
-albumentations>=1.0.3
-Cython  # for pycocotools https://github.com/cocodataset/cocoapi/issues/172
-pycocotools>=2.0  # COCO mAP
-roboflow
 thop~=0.0.31-2005241907
 
 yaml~=0.2.5
-flask~=2.1.1
+flask~=2.0.3
 future~=0.18.2
 
 # GUI ----------------------------------------
 PyQT
+pycameralist~=1.0.0

@@ -419,7 +419,7 @@ def plot_results(file='path/to/results.csv', dir=''):
         except Exception as e:
             print(f'Warning: Plotting error for {f}: {e}')
     ax[1].legend()
-    fig.savefig(save_dir / 'results.png', dpi=200)
+    fig.savefig(save_dir / 'results.svg', dpi=200)
     plt.close()
 
 

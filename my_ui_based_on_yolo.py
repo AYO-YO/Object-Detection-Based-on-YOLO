@@ -52,7 +52,7 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
         self.conf_thres = 0.25  # 置信阈值
         self.iou_thres = 0.45  # nms的IOU阈值
         self.max_det = 300  # 每张图像的最大检测次数
-        self.device = '0'  # cuda 设备, 即 0 or 0,1,2,3 or cpu
+        self.device = '0' if torch.cuda.is_available() else 'cpu'  # cuda 设备, 即 0 or 0,1,2,3 or cpu
         self.view_img = False  # 展示结果
         self.save_txt = False  # 保存结果到 *.txt
         self.save_conf = False  # 保存置信度 --save-txt labels

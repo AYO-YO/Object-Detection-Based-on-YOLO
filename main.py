@@ -10,6 +10,7 @@ import random
 import sys
 import threading
 from pathlib import Path
+from typing import List
 
 import cv2
 import numpy as np
@@ -168,8 +169,13 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
             LOGGER.info(f'{s} 推理完成，用时： ({t3 - t2:.3f}s)')
             # 是否需要分类保存
             if self.need_cls:
+                t_pool: List[threading.Thread] = []
                 for i in self.clss:
-                    threading.Thread(target=self.save_cls_result, args=(self.im_result, i)).start()
+                    t = threading.Thread(target=self.save_cls_result, args=(self.im_result, i))
+                    t.start()
+                    t_pool.append(t)
+                for t in t_pool:
+                    t.join()
         self.last_res = s
 
     def after_detect(self):
@@ -177,7 +183,7 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
         t = tuple(x / self.seen * 1E3 for x in self.dt)  # 图片的速度
         LOGGER.info(f'大小为{self.img_sz}的图像处理速度: 预处理 --- %.1fms, 推理 --- %.1fms,  NMS --- %.1fms' % t)
         if self.need_cls:
-            path = '\\'.join(self.cls_path.split("\\")[:-2])
+            path = '\\'.join(self.img_path.split("\\")[:-2])
             LOGGER.info(f'已保存至{path}')
         if self.update:
             strip_optimizer(self.weights)  # 更新模型（修复 SourceChangeWarning）
@@ -200,17 +206,16 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
     def save_cls_result(self, im_row, c):
         i = 0
         dirs = os.path.join(self.save_dir, self.names[c])
-        self.cls_path = os.path.join(dirs, f'{i}.jpg')
-        while os.path.exists(self.cls_path):
+        self.img_path = os.path.join(dirs, f'{i}.jpg')
+        while os.path.exists(self.img_path):
             i += 1
             dirs = os.path.join(self.save_dir, self.names[c])
-            self.cls_path = os.path.join(dirs, f'{i}.jpg')
-        with threading.Lock():
-            if not os.path.exists(dirs):
-                os.makedirs(dirs)
-            result = cv2.cvtColor(im_row, cv2.COLOR_BGR2RGB)
-            im = Image.fromarray(result)
-            im.save(self.cls_path)
+            self.img_path = os.path.join(dirs, f'{i}.jpg')
+        if not os.path.exists(dirs):
+            os.makedirs(dirs)
+        result = cv2.cvtColor(im_row, cv2.COLOR_BGR2RGB)
+        im = Image.fromarray(result)
+        im.save(self.img_path)
 
     def showResult(self):
         result = cv2.cvtColor(self.im_result, cv2.COLOR_BGR2BGRA)

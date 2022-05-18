@@ -1,46 +1,15 @@
-QWidget {
+QWidget {{
+  font-size: 20px;
+}}
 
-{
-  font-size: 20px
-;
-}
-}
+QPushButton {{
+color: {QTMATERIAL_SECONDARYCOLOR};
+text-transform: none;
+background-color: {QTMATERIAL_PRIMARYCOLOR};
+border-radius:15px;
+font-size:22px;
+}}
 
-QPushButton {
-
-{
-color: {
-  QTMATERIAL_SECONDARYCOLOR
-}
-
-;
-text-transform: none
-
-;
-background-color: {
-  QTMATERIAL_PRIMARYCOLOR
-}
-
-;
-border-radius:
-
-15
-px
-
-;
-font-size:
-
-22
-px
-
-;
-}
-}
-
-.big_button {
-
-{
-  height: 64px
-;
-}
-}
+.big_button {{
+  height: 64px;
+}}

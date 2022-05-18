@@ -38,6 +38,14 @@ https://pytorch.org/get-started/locally/
 $ while read requirement; do conda install --yes $requirement || pip install $requirement; done < requirements.txt
 ```
 
+安装PyCameraList，由于这个包的作者仅构建上传了Python3.6，所以Python>=3.7还需要手动构建安装这个包。
+
+```bash
+cd py-camera-list-project
+python setup.py build
+python setup.py install
+```
+
 ## 使用说明
 
 运行`main.py`。即自动打开窗口。

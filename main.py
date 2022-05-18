@@ -8,6 +8,7 @@ import random
 #
 # WARNING! All changes made in this file will be lost!
 import sys
+import threading
 from pathlib import Path
 
 import cv2
@@ -41,28 +42,23 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
         self.timer_video = QtCore.QTimer()
         self.setupUi(self)
         self.init_main()
-        self.cap = None
-        self.weights = ROOT / 'weights/mycoco_m.pt'  # 权重模型
         self.source = ''  # 文件/目录/URL/通配符批量选择文件, 0 -- 摄像头
+        self.weights = ROOT / 'weights/mycoco_m.pt'  # 权重模型
         self.data = 'data/mycoco.yaml'  # 数据集.yaml路径
-        self.img_sz = (640, 640)  # 图片大小(height, width)
-        self.out = None
+        self.img_sz = (416, 416)  # 图片大小(height, width)(必须是32的整数倍)
         self.augment = True  # 增强推理
-        self.visualize = False  # 可视化特征
-        self.conf_thres = 0.25  # 置信阈值
+        self.conf_thres = 0.35  # 置信阈值
         self.iou_thres = 0.45  # nms的IOU阈值
-        self.max_det = 300  # 每张图像的最大检测次数
+        self.max_det = 100  # 每张图像的最大检测次数
         self.device = '0' if torch.cuda.is_available() else 'cpu'  # cuda 设备, 即 0 or 0,1,2,3 or cpu
         self.view_img = False  # 展示结果
         self.save_txt = False  # 保存结果到 *.txt
-        self.save_conf = False  # 保存置信度 --save-txt labels
         self.save_crop = False  # 保存裁剪的预测框
-        self.nosave = False  # 不保存图片/视频
+        self.no_save = False  # 不保存图片/视频
         self.classes = None  # 按类别过滤
         self.agnostic_nms = False  # 与类别无关的NMS
-        self.augment = False  # 增强推理
         self.visualize = False  # 可视化特征
-        self.update = False  # 更新模型(边推理边强化训练)
+        self.update = False  # 更新模型(边推理边强化训练)、（低性能设备不推荐）
         self.project = ROOT / 'tmp'  # 运行的目录
         self.name = 'cls'  # 保存结果到 project/name
         self.exist_ok = False  # 是否使用现有的 project/name 若为True，则使用最近的一次结果文件夹
@@ -74,10 +70,11 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
         self.save_dir = increment_path(Path(self.project) / self.name, exist_ok=self.exist_ok)  # 保存的文件夹
         self.dt, self.seen = [0.0, 0.0, 0.0], 0
         self.device = select_device(self.device)
-        self.save_img = not self.nosave and not self.source.endswith('.txt')  # 保存推理图像
         self.last_res = ''  # 上一次推理结果，当视频推理结果未发生变化时，则不打印结果
         cudnn.benchmark = True
 
+        self.cap = None
+        self.is_video = False
         self.need_cls = True  # 是否需要分类保存
 
         # 加载模型
@@ -144,30 +141,35 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
                     n = (det[:, -1] == c).sum()  # 每个类别的数量
                     s += f"{self.names[int(c)]} --- {n}, "  # 添加到结果字符串
 
-                # 将结果保存至本地
+                # 绘制结果图片
                 for *xyxy, conf, cls in reversed(det):
-                    if self.save_img or self.save_crop or self.view_img:  # Add bbox to image
-                        c = int(cls)  # 类别索引
-                        label = None if self.hide_labels else (
-                            self.names[c] if self.hide_conf else f'{self.names[c]} {conf:.2f}')
-                        annotator.box_label(xyxy, label, color=colors(c, True))
-                        if self.save_crop:
-                            save_one_box(xyxy, imc, BGR=True)
-                        if self.need_cls:
-                            clss.add(c)
+                    c = int(cls)  # 类别索引
+                    label = None if self.hide_labels else (
+                        self.names[c] if self.hide_conf else f'{self.names[c]} {conf:.2f}')
+                    annotator.box_label(xyxy, label, color=colors(c, True))
+                    if self.save_crop:
+                        save_one_box(xyxy, imc, BGR=True)
+                    if self.need_cls:
+                        clss.add(c)
 
             # 串流结果
             self.im_result = annotator.result()
-
+            self.clss = clss
             self.showResult()
-            # 是否需要分类保存
-            if self.need_cls:
-                for i in clss:
+            # 是否需要分类保存，批量图片强制保存（视频检测到包含不同类型的帧时才会保存以减少IO次数）
+            if self.need_cls and (not self.is_video):
+                for i in self.clss:
+                    # t = threading.Thread(target=self.save_cls_result, args=(self.im_result, i))
+                    # t.start()
                     self.save_cls_result(self.im_result, i)
 
         # 输出推理时间
-        if s != self.last_res:
+        if self.is_video and s != self.last_res:
             LOGGER.info(f'{s} 推理完成，用时： ({t3 - t2:.3f}s)')
+            # 是否需要分类保存
+            if self.need_cls:
+                for i in self.clss:
+                    threading.Thread(target=self.save_cls_result, args=(self.im_result, i)).start()
         self.last_res = s
 
     def after_detect(self):
@@ -183,7 +185,6 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
     @torch.no_grad()
     def pre_detect(self):
         self.source = str(self.source)
-        self.save_img = not self.nosave and not self.source.endswith('.txt')  # 保存推理图片
 
         # 加载数据
         dataset = LoadImages(self.source, img_size=self.img_sz, stride=self.stride, auto=self.pt)
@@ -197,8 +198,6 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
         self.after_detect()
 
     def save_cls_result(self, im_row, c):
-        result = cv2.cvtColor(im_row, cv2.COLOR_BGR2RGB)
-        im = Image.fromarray(result)
         i = 0
         dirs = os.path.join(self.save_dir, self.names[c])
         self.cls_path = os.path.join(dirs, f'{i}.jpg')
@@ -206,9 +205,12 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
             i += 1
             dirs = os.path.join(self.save_dir, self.names[c])
             self.cls_path = os.path.join(dirs, f'{i}.jpg')
-        if not os.path.exists(dirs):
-            os.makedirs(dirs)
-        im.save(self.cls_path)
+        with threading.Lock():
+            if not os.path.exists(dirs):
+                os.makedirs(dirs)
+            result = cv2.cvtColor(im_row, cv2.COLOR_BGR2RGB)
+            im = Image.fromarray(result)
+            im.save(self.cls_path)
 
     def showResult(self):
         result = cv2.cvtColor(self.im_result, cv2.COLOR_BGR2BGRA)
@@ -345,12 +347,13 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
         print(f'接收到{cls_map[cls]}任务,{cls_map[cls][:-2]}地址为：', file)
         self.new_ui.close()
         if cls == 0:  # 图片检测信号
-            if os.path.isdir(file):
-                self.need_cls = True
+            self.is_video = False
+            self.need_cls = True if os.path.isdir(file) else False  # 单张图片无需保存
             self.source = file
             self.pre_detect()
         elif cls == 1:  # 视频检测信号
             self.need_cls = True
+            self.is_video = True
             self.cap = cv2.VideoCapture()
             is_url: bool = file.startswith(('http://', 'https://'))
             if is_url:
@@ -368,6 +371,8 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
                 self.btn_img.setDisabled(True)
                 self.btn_video.setText(u'关闭视频')
         elif cls == 2:  # 摄像头检测信号
+            self.need_cls = True
+            self.is_video = True
             is_url: bool = file.startswith('rtsp://')
             if is_url:
                 self.need_cls = True

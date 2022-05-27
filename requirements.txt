@@ -1,22 +1,22 @@
 # pip install -r requirements.txt
 
 # Base ----------------------------------------
-matplotlib>=3.2.2
-numpy>=1.18.5
-opencv-python>=4.1.2
-Pillow>=7.1.2
-PyYAML>=5.3.1
-requests>=2.23.0
-torchvision>=0.8.1
-tqdm>=4.41.0
-pytorch
+matplotlib~=3.2.2
+numpy~=1.18.5
+opencv-python~=4.1.2
+Pillow~=7.1.2
+PyYAML~=5.3.1
+requests~=2.23.0
+tqdm~=4.41.0
+# pytorch
+# torchvision~=0.8.1
 
 # Logging -------------------------------------
 # wandb
 
 # Plotting ------------------------------------
-pandas>=1.1.4
-seaborn>=0.11.0
+pandas~=1.1.4
+seaborn~=0.11.0
 
 # Export --------------------------------------
 tensorflow~=2.3.0
@@ -24,12 +24,13 @@ tensorflow~=2.3.0
 # Extras --------------------------------------
 thop~=0.0.31-2005241907
 Cython
-yaml~=0.2.5
+pyyaml~=0.2.5
 flask~=2.0.3
 future~=0.18.2
 
 # GUI ----------------------------------------
-PyQT
+PyQT5
+qt_material
 
-# 需要手动安装，详见README.md --------------------
+# README.md --------------------
 # pycameralist~=1.0.0

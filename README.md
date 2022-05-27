@@ -10,6 +10,8 @@
 
 摄像头列表读取并选择基于PyCameraList：<https://gitee.com/jiangbin2020/py-camera-list-project>
 
+模型不再上传，需要模型可以私聊我。
+
 ## 环境搭建
 
 获取项目：
@@ -36,6 +38,14 @@ https://pytorch.org/get-started/locally/
 
 ```bash
 $ while read requirement; do conda install --yes $requirement || pip install $requirement; done < requirements.txt
+```
+
+安装PyCameraList，由于这个包的作者仅构建上传了Python3.6，所以Python>=3.7还需要手动构建安装这个包。
+
+```bash
+cd py-camera-list-project
+python setup.py build
+python setup.py install
 ```
 
 ## 使用说明

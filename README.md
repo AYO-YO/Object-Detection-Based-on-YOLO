@@ -10,6 +10,8 @@
 
 摄像头列表读取并选择基于PyCameraList：<https://gitee.com/jiangbin2020/py-camera-list-project>
 
+模型不再上传，需要模型可以私聊我。
+
 ## 环境搭建
 
 获取项目：

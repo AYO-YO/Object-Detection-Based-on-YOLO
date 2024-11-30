@@ -22,7 +22,7 @@ seaborn~=0.11.2
 tensorflow~=2.9.1
 
 # Extras --------------------------------------
-thop~=0.0.31-2005241907
+thop~=0.1.1
 Cython
 pyyaml~=0.2.5
 flask~=2.1.2

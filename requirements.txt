@@ -24,7 +24,7 @@ tensorflow~=2.9.1
 # Extras --------------------------------------
 thop~=0.0.31-2005241907
 Cython
-pyyaml~=0.2.5
+pyyaml~=6.0
 flask~=2.1.2
 future~=0.18.2
 
